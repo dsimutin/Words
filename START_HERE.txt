@@ -1,0 +1,38 @@
+САМЫЙ ПРОСТОЙ ЗАПУСК БОТА НА MAC
+
+1. Скачай репозиторий с GitHub.
+
+2. Открой файл:
+   install_mac.command
+
+3. Дождись установки.
+   В конце откроется файл .env.
+
+4. В файле .env замени две строки:
+
+   BOT_TOKEN=PASTE_YOUR_TELEGRAM_BOT_TOKEN_HERE
+   ADMIN_ID=123456789
+
+   На свои данные:
+
+   BOT_TOKEN=токен от BotFather
+   ADMIN_ID=твой Telegram ID
+
+5. Сохрани файл .env.
+
+6. Открой файл:
+   run_mac.command
+
+7. Бот запустится.
+
+Если появится ошибка доступа к .command файлу:
+- нажми правой кнопкой мыши по файлу
+- выбери Открыть
+- потом снова Открыть
+
+Если Mac всё равно не дает открыть:
+открой Terminal в папке проекта и введи:
+
+chmod +x install_mac.command run_mac.command
+
+Потом снова открой install_mac.command.
