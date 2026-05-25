@@ -160,45 +160,72 @@ async def count_words():
         return row[0]
 
 
-async def get_next_word(user_id: int):
-    now = datetime.now().isoformat(timespec="seconds")
-
+async def get_random_unseen_word(user_id: int):
+    """Быстрое получение случайного невиденного слова."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         db.row_factory = aiosqlite.Row
-
-        # Сначала берем слово, которое пользователь еще не видел
         cursor = await db.execute(
             """
-            SELECT * FROM words
+            SELECT id FROM words
             WHERE id NOT IN (
                 SELECT word_id FROM progress WHERE user_id = ?
             )
-            ORDER BY RANDOM()
-            LIMIT 1
+            LIMIT 1000
             """,
             (user_id,),
         )
-        word = await cursor.fetchone()
-        if word:
-            return word
+        ids = await cursor.fetchall()
+        if not ids:
+            return None
 
-        # Потом берем слово, которое пора повторить
+        word_id = random.choice(ids)[0]
+        cursor = await db.execute("SELECT * FROM words WHERE id = ?", (word_id,))
+        return await cursor.fetchone()
+
+
+async def get_random_due_word(user_id: int):
+    """Быстрое получение случайного слова для повторения."""
+    now = datetime.now().isoformat(timespec="seconds")
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
         cursor = await db.execute(
             """
-            SELECT words.* FROM words
-            JOIN progress ON progress.word_id = words.id
-            WHERE progress.user_id = ? AND progress.next_review_at <= ?
-            ORDER BY RANDOM()
-            LIMIT 1
+            SELECT word_id FROM progress
+            WHERE user_id = ? AND next_review_at <= ?
+            LIMIT 1000
             """,
             (user_id, now),
         )
-        word = await cursor.fetchone()
-        if word:
-            return word
+        word_ids = await cursor.fetchall()
+        if not word_ids:
+            return None
 
-        # Если все слова отложены, показываем случайное
-        cursor = await db.execute("SELECT * FROM words ORDER BY RANDOM() LIMIT 1")
+        word_id = random.choice(word_ids)[0]
+        cursor = await db.execute("SELECT * FROM words WHERE id = ?", (word_id,))
+        return await cursor.fetchone()
+
+
+async def get_next_word(user_id: int):
+    # Сначала берем слово, которое пользователь еще не видел
+    word = await get_random_unseen_word(user_id)
+    if word:
+        return word
+
+    # Потом берем слово, которое пора повторить
+    word = await get_random_due_word(user_id)
+    if word:
+        return word
+
+    # Если все слова отложены, показываем случайное из всех слов
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT id FROM words LIMIT 1000")
+        word_ids = await cursor.fetchall()
+        if not word_ids:
+            return None
+
+        word_id = random.choice([w[0] for w in word_ids])
+        cursor = await db.execute("SELECT * FROM words WHERE id = ?", (word_id,))
         return await cursor.fetchone()
 
 
@@ -317,7 +344,8 @@ async def import_words_from_folder():
         os.makedirs(WORDS_DIR, exist_ok=True)
         return 0
 
-    imported = 0
+    words_to_import = []
+    now = datetime.now().isoformat(timespec="seconds")
 
     for filename in os.listdir(WORDS_DIR):
         if not filename.endswith((".txt", ".md")):
@@ -330,10 +358,25 @@ async def import_words_from_folder():
                 if not parsed:
                     continue
                 word, transcription, translation = parsed
-                await add_or_update_word(word, transcription, translation)
-                imported += 1
+                words_to_import.append((word.strip(), transcription.strip(), translation.strip(), now))
 
-    return imported
+    if not words_to_import:
+        return 0
+
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.executemany(
+            """
+            INSERT INTO words(word, transcription, translation, created_at)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(word) DO UPDATE SET
+                transcription = excluded.transcription,
+                translation = excluded.translation
+            """,
+            words_to_import,
+        )
+        await db.commit()
+
+    return len(words_to_import)
 
 
 # -----------------------------
