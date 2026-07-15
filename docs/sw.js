@@ -1,5 +1,5 @@
-const CACHE='words-shell-v4';
-const SHELL=['./','./index.html','./manifest.webmanifest','./icon-180.png','./icon-512.png'];
+const CACHE='words-shell-v5';
+const SHELL=['./','./index.html','./manifest.webmanifest','./icon-words-v2-180.png','./icon-words-v2-512.png'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
 self.addEventListener('fetch',event=>{
