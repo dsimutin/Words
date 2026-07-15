@@ -9,7 +9,7 @@
   "background_color": "#0e1823",
   "theme_color": "#0e1823",
   "icons": [
-    {"src":"./icon-words-v2-180.png","sizes":"180x180","type":"image/png","purpose":"any"},
-    {"src":"./icon-words-v2-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
+    {"src":"./icon-words-v3-180.png","sizes":"180x180","type":"image/png","purpose":"any"},
+    {"src":"./icon-words-v3-512.png","sizes":"512x512","type":"image/png","purpose":"any maskable"}
   ]
 }
