@@ -1,4 +1,4 @@
-const CACHE='words-shell-v37';
+const CACHE='words-shell-v38';
 const SHELL=['./','./index.html','./streak.js','./manifest.webmanifest','./icon-words-v3-180.png','./icon-words-v3-512.png','./achievements/first.webp','./achievements/student.webp','./achievements/rhythm.webp','./achievements/practice.webp','./achievements/habit.webp','./achievements/speaker.webp','./achievements/explorer.webp','./achievements/linguist.webp','./achievements/master.webp','./achievements/expert.webp','./achievements/legend.webp'];
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
