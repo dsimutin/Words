@@ -1,34 +1,25 @@
 const STREAK_STATUSES=[
- {days:1,id:'first',icon:'📝',name:'Первое слово',description:'Каждый полиглот когда-то начал с первого слова.'},
- {days:3,id:'student',icon:'📖',name:'Ученик',description:'Отличное начало. Регулярность постепенно становится привычкой.'},
- {days:7,id:'explorer',icon:'🎒',name:'Исследователь',description:'Неделя позади. Ваш словарный запас уже растёт.'},
- {days:14,id:'practitioner',icon:'💬',name:'Практик',description:'Новые слова начинают запоминаться быстрее.'},
- {days:21,id:'memorizer',icon:'🧠',name:'Запоминающий',description:'Регулярность превращает знания в навык.'},
- {days:30,id:'speaker',icon:'📚',name:'Собеседник',description:'Уже месяц ежедневной практики.'},
- {days:50,id:'polyglot',icon:'🌍',name:'Полиглот',description:'Ваш словарный запас заметно расширился.'},
- {days:75,id:'linguist',icon:'🎓',name:'Лингвист',description:'Язык становится понятной системой.'},
- {days:100,id:'master',icon:'👑',name:'Мастер языка',description:'Сто дней подряд — это уже устойчивая привычка.'},
- {days:180,id:'expert',icon:'🌟',name:'Эксперт',description:'Вы продолжаете там, где большинство останавливается.'},
- {days:365,id:'legend',icon:'✨',name:'Легенда',description:'Целый год ежедневной практики.'}
+ {days:1,id:'first',asset:'first.webp',name:'Первый шаг',description:'Первый шаг сделан. Главное — продолжать.',color:'#a7bd76'},
+ {days:3,id:'student',asset:'student.webp',name:'Ученик',description:'Отличное начало. Регулярность постепенно становится привычкой.',color:'#739dd3'},
+ {days:7,id:'rhythm',asset:'rhythm.webp',name:'В ритме',description:'Неделя практики — вы уже вошли в ритм.',color:'#49aca9'},
+ {days:14,id:'practice',asset:'practice.webp',name:'Практик',description:'Новые слова начинают запоминаться быстрее.',color:'#8b7aaa'},
+ {days:21,id:'habit',asset:'habit.webp',name:'Крепкая привычка',description:'Регулярность превращает знания в навык.',color:'#72945d'},
+ {days:30,id:'speaker',asset:'speaker.webp',name:'Собеседник',description:'Месяц ежедневной практики — серьёзный результат.',color:'#d98270'},
+ {days:50,id:'explorer',asset:'explorer.webp',name:'Исследователь',description:'Словарный запас заметно расширился.',color:'#3b86ad'},
+ {days:75,id:'linguist',asset:'linguist.webp',name:'Лингвист',description:'Язык становится понятной системой.',color:'#8565a8'},
+ {days:100,id:'master',asset:'master.webp',name:'Мастер языка',description:'Сто дней — это уже устойчивая привычка.',color:'#34577f'},
+ {days:180,id:'expert',asset:'expert.webp',name:'Эксперт',description:'Вы продолжаете там, где большинство останавливается.',color:'#27375f'},
+ {days:365,id:'legend',asset:'legend.webp',name:'Легенда',description:'Целый год ежедневной практики.',color:'#e5a325'}
 ];
-function getStreakStatus(days){
- days=Math.max(0,Number(days)||0);
- if(!days)return{days:0,current:null,next:STREAK_STATUSES[0],remaining:1,progress:0,max:false};
- let index=0;STREAK_STATUSES.forEach((x,i)=>{if(days>=x.days)index=i});
- const current=STREAK_STATUSES[index],next=STREAK_STATUSES[index+1]||null,max=!next;
- const progress=max?1:Math.max(0,Math.min(1,(days-current.days)/(next.days-current.days)));
- return{days,current,next,remaining:next?Math.max(0,next.days-days):0,progress,max};
-}
+const MOTIVATION_PHRASES=['Каждое занятие делает знакомые слова увереннее.','Семь карточек сегодня — меньше сомнений завтра.','Небольшой шаг каждый день сильнее редких рывков.','Ошибки показывают, что повторить, а не что вы не умеете.','Регулярность постепенно превращается в лёгкость.','Сегодняшнее повторение укрепляет память.','Ещё одно занятие — ещё семь встреч со словами.','Вы уже знаете больше, чем в начале пути.','Короткая практика тоже считается важным шагом.','Возвращаться к словам — нормальная часть обучения.','Спокойный темп помогает знаниям закрепиться.','Каждый правильный ответ вырос из предыдущих попыток.','Серия строится по одному занятию за раз.','Слова становятся своими, когда встречаются регулярно.','Лучший результат — тот, к которому вы возвращаетесь.','Пять минут практики лучше отложенного идеального часа.','Сегодня вы поддержали привычку учиться.','Повторение освобождает внимание для новых слов.','Уверенность растёт незаметно, но каждый день.','Продолжайте: память любит регулярные встречи.'];
+function medalSrc(x){return'./achievements/'+x.asset}
+function getStreakStatus(days){days=Math.max(0,Number(days)||0);let current=null,next=STREAK_STATUSES[0];STREAK_STATUSES.forEach(x=>{if(days>=x.days){current=x;next=STREAK_STATUSES[STREAK_STATUSES.indexOf(x)+1]||null}});const start=current?current.days:0,end=next?next.days:start||1,progress=next?Math.max(0,Math.min(1,(days-start)/(end-start))):1;return{days,current,next,remaining:next?Math.max(0,next.days-days):0,progress,max:!next}}
 function achievementHeader(d){
- const info=getStreakStatus(d.streak),lessons=Number(d.totalLessons||0);
- if(!info.current)return`<div class="welcome-head"><h1>${esc(d.student.name)}</h1><div class="welcome-badges"><span class="streak">🔥 Начните серию</span><span class="lesson-count">✓ ${lessons} ${lessonWord(lessons)}</span></div></div><div class="achievement-progress"><div class="achievement-copy"><b>📝 Первое слово</b><span>Завершите первое занятие, чтобы начать серию.</span></div><div class="progress-track" role="progressbar" aria-label="Прогресс до статуса Первое слово" aria-valuemin="0" aria-valuemax="1" aria-valuenow="0"><i style="width:0%"></i></div></div>`;
- const percent=Math.round(info.progress*100),footer=info.max?'Максимальный статус достигнут':`До статуса «${info.next.icon} ${info.next.name}» — ${info.remaining} ${dayWord(info.remaining)}`;
- return`<div class="welcome-head"><h1>${esc(d.student.name)}</h1><div class="welcome-badges"><div class="badge-row"><span class="streak">🔥 ${info.days} ${dayWord(info.days)}</span><span class="status-badge">${info.current.icon} ${info.current.name}</span></div><span class="lesson-count">✓ ${lessons} ${lessonWord(lessons)} · рекорд ${d.longestStreak||info.days}</span></div></div><div class="achievement-progress"><div class="achievement-copy"><b>${info.current.description}</b><span>${footer}</span></div><div class="progress-track" role="progressbar" aria-label="Прогресс до следующего статуса: ${percent}%" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div></div>`;
+ const streak=getStreakStatus(d.streak),best=getStreakStatus(d.longestStreak),current=best.current||STREAK_STATUSES[0],bestDays=Math.max(0,Number(d.longestStreak||0)),lessons=Number(d.totalLessons||0),phrase=MOTIVATION_PHRASES[lessons%MOTIVATION_PHRASES.length],percent=Math.round(streak.progress*100),footer=streak.next?`До достижения «${streak.next.name}» — ${streak.remaining} ${dayWord(streak.remaining)}`:'Все достижения серии открыты';
+ const medals=STREAK_STATUSES.map(x=>bestDays>=x.days?`<button class="medal-slot earned" onclick="openAchievements()" aria-label="${esc(x.name)}, получено"><img src="${medalSrc(x)}" alt=""><small>${x.days}</small></button>`:`<button class="medal-slot locked" onclick="openAchievements()" aria-label="${esc(x.name)}, закрыто"><span class="lock-shape"></span></button>`).join('');
+ return`<div class="achievement-hero" style="--achievement-accent:${current.color};--achievement-glow:${current.color}20"><div class="hero-name"><h1>${esc(d.student.name)}</h1><button class="current-medal" onclick="openAchievements()" aria-label="Текущее достижение: ${esc(current.name)}"><img src="${medalSrc(current)}" alt=""><b>${current.days} ${dayWord(current.days)}</b><span>${esc(current.name)}</span></button></div><div class="medal-collection">${medals}</div><div class="welcome-badges"><span class="streak">🔥 ${Number(d.streak||0)} ${dayWord(Number(d.streak||0))}</span><button class="freeze-pill" onclick="showFreezeInfo()" aria-label="Как работают заморозки">❄️ ${Number(d.freezeCount||0)}</button></div><span class="lesson-count">✓ ${lessons} ${lessonWord(lessons)} · рекорд ${bestDays}</span><div class="achievement-progress"><div class="achievement-copy"><b>${esc(phrase)}</b><span>${esc(footer)}</span></div><div class="progress-track" role="progressbar" aria-label="Прогресс до следующего достижения" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${percent}"><i style="width:${percent}%"></i></div></div></div>`;
 }
-function maybeCelebrateStatus(days){
- const info=getStreakStatus(days),key='wordsStreakStatus:'+TOKEN,seen=localStorage.getItem(key),level=info.current?info.current.days:0;
- if(seen===null){localStorage.setItem(key,String(level));return}
- if(level<=Number(seen)||!info.current)return;
- localStorage.setItem(key,String(level));
- const toast=document.createElement('div');toast.className='achievement-toast';toast.innerHTML=`<small>Новый статус!</small><b>${info.current.icon} ${info.current.name}</b><span>${info.days} ${dayWord(info.days)} подряд</span>`;document.body.appendChild(toast);setTimeout(()=>toast.remove(),4200);
-}
+function showFreezeInfo(){alert('❄️ Заморозка сохраняет серию, если пропущен один день.\n\nКак получить:\n• впервые дойти до серии 7 дней;\n• пройти третье полное занятие за день с результатом не ниже 5/7.\n\nМожно хранить до 2 заморозок. Она применится автоматически.')}
+function openAchievements(){const best=Math.max(0,Number(homeData&&homeData.longestStreak||0)),cards=STREAK_STATUSES.map(x=>{const unlocked=best>=x.days;return`<div class="achievement-card ${unlocked?'unlocked':'locked'}"><div class="medal"><img src="${medalSrc(x)}" alt=""></div><div><b>${esc(x.name)}</b><small>${unlocked?'Получено навсегда':x.days+' '+dayWord(x.days)+' подряд'}</small></div></div>`}).join(''),overlay=document.createElement('div');overlay.id='achievementOverlay';overlay.className='achievement-overlay';overlay.innerHTML=`<section class="achievement-modal"><div class="achievement-modal-head"><div><span>КОЛЛЕКЦИЯ</span><h2>Достижения</h2></div><button onclick="closeAchievements()" aria-label="Закрыть">×</button></div><p>Полученные медали остаются навсегда, даже если серия прервётся.</p><div class="achievement-grid">${cards}</div></section>`;overlay.onclick=e=>{if(e.target===overlay)closeAchievements()};document.body.appendChild(overlay)}
+function closeAchievements(){const x=document.getElementById('achievementOverlay');if(x)x.remove()}
+function maybeCelebrateStatus(days){const info=getStreakStatus(days),key='wordsStreakStatus:'+TOKEN,seen=Number(localStorage.getItem(key)||0),level=info.current?info.current.days:0;if(!localStorage.getItem(key)){localStorage.setItem(key,String(level));return}if(level<=seen||!info.current)return;localStorage.setItem(key,String(level));const toast=document.createElement('div');toast.className='achievement-toast';toast.innerHTML=`<img src="${medalSrc(info.current)}" alt=""><small>Новое достижение!</small><b>${esc(info.current.name)}</b><span>${info.days} ${dayWord(info.days)} подряд</span>`;document.body.appendChild(toast);setTimeout(()=>toast.remove(),4500)}
