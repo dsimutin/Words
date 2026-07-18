@@ -29,7 +29,7 @@ function openAchievement(days,isCurrent){const current=STREAK_STATUSES.filter(x=
 function openCurrentAchievement(days){openAchievement(days,true)}
 function closeAchievements(){const x=document.getElementById('achievementOverlay');if(x)x.remove()}
 function closeAchievementCelebration(){const x=document.getElementById('achievementCelebration');if(x)x.remove();document.body.classList.remove('celebrating')}
-function celebrationConfetti(){return Array.from({length:16},(_,i)=>`<i style="--x:${4+(i*37)%92}%;--y:${66+(i*19)%15}%;--r:${(i*47)%160-80}deg;--d:${(i%7)*.13}s"></i>`).join('')}
+function celebrationConfetti(){return Array.from({length:52},(_,i)=>`<i style="--x:${2+(i*37)%96}%;--fall:${48+(i*29)%68}vh;--dx:${(i*43)%120-60}px;--r:${(i*47)%180-90}deg;--spin:${(i*131)%720-360}deg;--d:${(i%10)*.035}s"></i>`).join('')}
 function showAchievementCelebration(status,replay){
  closeAchievementCelebration();
  const overlay=document.createElement('div');
