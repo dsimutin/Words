@@ -41,3 +41,52 @@ function showAchievementCelebration(status,replay){
  document.body.appendChild(overlay);
 }
 function maybeCelebrateStatus(days){const info=getStreakStatus(days),key='wordsStreakStatus:'+TOKEN,stored=localStorage.getItem(key),seen=Number(stored||0),level=info.current?info.current.days:0;if(stored===null){localStorage.setItem(key,String(level));return false}if(level<=seen||!info.current)return false;localStorage.setItem(key,String(level));showAchievementCelebration(info.current);return true}
+
+/* Emphasize the numeric progress in the achievement card without changing the copy. */
+(function highlightAchievementProgress(){
+  const style = document.createElement('style');
+  style.textContent = `
+    .achievement-copy .achievement-next{
+      display:flex!important;
+      flex-wrap:wrap;
+      align-items:baseline;
+      gap:4px 8px;
+    }
+    .achievement-copy .achievement-next > span:first-child{
+      flex:1 1 100%;
+      color:#718078;
+    }
+    .achievement-copy .achievement-next strong{
+      color:var(--achievement-accent,#319a87);
+      font-weight:800;
+      white-space:nowrap;
+    }
+    .achievement-copy .achievement-next em{
+      color:#718078;
+      font-style:normal;
+      white-space:nowrap;
+    }
+  `;
+  document.head.appendChild(style);
+
+  function apply(){
+    document.querySelectorAll('.achievement-copy > span').forEach((el)=>{
+      if (el.dataset.progressStyled) return;
+      const text=el.textContent||'';
+      const match=text.match(/^(.*?):\s*(\d+\s+из\s+\d+\s+дней?)\s*·\s*(осталось.*)$/i);
+      if(!match) return;
+      el.dataset.progressStyled='1';
+      el.className='achievement-next';
+      el.innerHTML='';
+      const label=document.createElement('span');
+      label.textContent=match[1]+':';
+      const value=document.createElement('strong');
+      value.textContent=match[2];
+      const remaining=document.createElement('em');
+      remaining.textContent=match[3];
+      el.append(label,value,remaining);
+    });
+  }
+  const run=()=>{apply();new MutationObserver(apply).observe(document.body,{childList:true,subtree:true});};
+  if(document.body) run(); else document.addEventListener('DOMContentLoaded',run,{once:true});
+})();
