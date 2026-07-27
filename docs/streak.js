@@ -44,6 +44,7 @@ function maybeCelebrateStatus(days){const info=getStreakStatus(days),key='wordsS
 
 /* Emphasize the numeric progress in the achievement card without changing the copy. */
 (function highlightAchievementProgress(){
+  if(typeof document==='undefined'||typeof document.createElement!=='function'||typeof MutationObserver==='undefined') return;
   const style = document.createElement('style');
   style.textContent = `
     .achievement-copy .achievement-next{
