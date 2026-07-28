@@ -103,7 +103,9 @@ function bootstrap(token, teacherKey, timeZone) {
   const data=studentData_(ss,token),p=data.progress;
   const activity=data.activity,streak=streakStatsForStudent_(activity,student,timeZone,now),bestStreak=Math.max(Number(student.best_streak||0),streak.longest);
   const summary={studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,almost:p.filter(x=>Number(x.level)===2).length,due:p.filter(x=>new Date(x.next_review_at||0)<=now).length,today:activity.filter(x=>dateKey_(x.timestamp,timeZone)===streak.todayKey).length};
-  const counts={words:sourceRowCount_(ss.getSheetByName(student.words_tab)),verbs:sourceRowCount_(ss.getSheetByName(student.verbs_tab))};
+  const wordTotal=sourceRowCount_(ss.getSheetByName(student.words_tab)),verbTotal=sourceRowCount_(ss.getSheetByName(student.verbs_tab));
+  const wordStudied=p.filter(x=>x.category==='word').length,verbStudied=p.filter(x=>x.category==='verb').length;
+  const counts={words:wordTotal,verbs:verbTotal,newWords:remainingStock_(wordTotal,wordStudied),newVerbs:remainingStock_(verbTotal,verbStudied)};
   return { role:'student',student:{name:student.name,language:String(student.language||'en')},counts:counts,
     studied:summary.studied,learned:summary.learned,almost:summary.almost,due:summary.due,today:summary.today,streak:streak.current,longestStreak:bestStreak,totalLessons:activity.length,freezeCount:Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),pendingAchievement:Number(student.pending_achievement_days||0)>0?{days:Number(student.pending_achievement_days),at:dateIso_(student.pending_achievement_at)}:null };
 }
@@ -278,11 +280,14 @@ function teacherDashboard_() {
     const p=progressByToken[String(s.token)]||[],a=activityByToken[String(s.token)]||[];
     const recent=a.slice(-8).reverse().map(x=>({date:dateIso_(x.timestamp),category:x.category,score:Number(x.score||0),total:Number(x.total||0)}));
     const difficult=p.slice().sort((x,y)=>Number(y.wrong||0)-Number(x.wrong||0)).filter(x=>Number(x.wrong||0)>0).slice(0,5).map(x=>({word:String(x.word),wrong:Number(x.wrong||0)}));
-    const last=a.length?a[a.length-1]:null, byCat=c=>p.filter(x=>x.category===c);
+    const last=a.length?a[a.length-1]:null, byCat=c=>p.filter(x=>x.category===c),wordProgress=byCat('word'),verbProgress=byCat('verb');
+    const wordTotal=sourceRowCount_(ss.getSheetByName(s.words_tab)),verbTotal=sourceRowCount_(ss.getSheetByName(s.verbs_tab));
+    const stock={words:remainingStock_(wordTotal,wordProgress.length),verbs:remainingStock_(verbTotal,verbProgress.length),wordTotal:wordTotal,verbTotal:verbTotal};
     return {name:s.name,active:truthy_(s.active),token:s.token,wordsTab:s.words_tab,verbsTab:s.verbs_tab,language:String(s.language||'en'),
       lastSeen:dateIso_(s.last_seen_at),studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,
       words:{studied:byCat('word').length,learned:byCat('word').filter(x=>Number(x.level)>=3).length},
       verbs:{studied:byCat('verb').length,learned:byCat('verb').filter(x=>Number(x.level)>=3).length},
+      stock:stock,stockWarning:stock.words<=20||Boolean(s.verbs_tab)&&stock.verbs<=20,
       today:a.filter(x=>now-new Date(x.timestamp).getTime()<day).length,
       week:a.filter(x=>now-new Date(x.timestamp).getTime()<7*day).length,
       lastLessonAt:last?dateIso_(last.timestamp):'',lastScore:last?Number(last.score)+'/'+Number(last.total):'—',difficult:difficult,history:recent};
@@ -374,6 +379,7 @@ function readItemsFromSheet_(sheet,category,tab) {
 }
 
 function sourceRowCount_(sheet){return sheet?Math.max(0,sheet.getLastRow()-1):0;}
+function remainingStock_(total,studied){return Math.max(0,Number(total||0)-Number(studied||0));}
 
 function countSourceItems_(s){return{words:readItems_(s,'word').length,verbs:readItems_(s,'verb').length};}
 function studentSummary_(token,timeZone){

@@ -20,6 +20,12 @@ test('серверный лимит заморозок равен семи',()=>
   assert.doesNotMatch(source,/Math\.min\(2\s*,|freezeCount\s*<\s*2(?:\D|$)/);
 });
 
+test('остаток новых слов уменьшается и не бывает отрицательным',()=>{
+  const server=loadServer();
+  assert.equal(server.remainingStock_(200,57),143);
+  assert.equal(server.remainingStock_(7,10),0);
+});
+
 test('данные ученика повторно берутся из кэша',()=>{
   const server=loadServer();
   let reads=0;
