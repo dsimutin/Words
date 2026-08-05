@@ -113,6 +113,7 @@ test('перестановка слов засчитывается при сов
   const server=loadServer(),grade=server.gradeHomeworkAnswer_('After work I am tired.','I am tired after work.','');
   assert.equal(grade.result,'correct');
   assert.ok(grade.similarity>=.7);
+  assert.doesNotMatch(grade.message,/%/);
 });
 
 test('отрицание и замена ключевого смысла не проходят по проценту сходства',()=>{
