@@ -140,6 +140,13 @@ test('simple и continuous можно явно добавить как допу�
   assert.equal(server.gradeHomeworkAnswer_('I go to work.','I am going to work.','I go to work.').result,'correct');
 });
 
+test('ошибка с explain получает понятное грамматическое пояснение',()=>{
+  const server=loadServer();
+  const result=server.gradeHomeworkAnswer_('Could you explain me this word?','Can you explain this word to me?','');
+  assert.equal(result.result,'wrong');
+  assert.match(result.message,/после explain.*to me/i);
+});
+
 test('дата заморозки из ячейки Date сохраняет серию',()=>{
   const server=loadServer();server.Utilities.formatDate=value=>value.toISOString().slice(0,10);
   assert.equal(server.freezeDates_({freeze_dates:new Date('2026-08-03T00:00:00Z')}).join(','),'2026-08-03');

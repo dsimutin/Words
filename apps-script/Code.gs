@@ -284,6 +284,11 @@ function homeworkSimilarity_(given,expected){
   const chars=1-editDistance_(given,expected)/Math.max(given.length,expected.length,1);
   return .55*homeworkTokenOverlap_(a,b)+.25*homeworkLcsRatio_(a,b)+.2*Math.max(0,chars);
 }
+function homeworkGrammarHint_(given){
+  const text=normalizeHomeworkAnswer_(given);
+  if(/\bexplain (me|him|her|us|them)\b/.test(text))return'Пока неверно: после explain нужно поставить предмет, а затем to me — например, explain this word to me.';
+  return'';
+}
 function gradeHomeworkAnswer_(answer,correct,alternatives){
   const given=normalizeHomeworkAnswer_(answer),accepted=[correct].concat(String(alternatives||'').split('|')).map(normalizeHomeworkAnswer_).filter(Boolean);
   if(!given)return{result:'wrong',status:'Неверно',message:'Сначала напишите перевод.'};
@@ -292,7 +297,7 @@ function gradeHomeworkAnswer_(answer,correct,alternatives){
   if(similarity>=.7)return{result:'correct',status:'Верно',similarity:similarity,message:'Верно! Отличная работа.'};
   const closest=Math.min.apply(null,accepted.map(x=>editDistance_(given,x))),length=Math.max(given.length,Math.min.apply(null,accepted.map(x=>x.length)));
   if(closest<=Math.max(1,Math.floor(length*.1)))return{result:'almost',status:'Почти верно',message:'Почти верно — проверьте написание и грамматику.'};
-  return{result:'wrong',status:'Неверно',message:'Пока неверно. Посмотрите правильный вариант.'};
+  return{result:'wrong',status:'Неверно',message:homeworkGrammarHint_(answer)||'Пока неверно. Посмотрите правильный вариант.'};
 }
 function checkHomeworkAnswer(token,itemId,answer,hintLevel){
   const lock=LockService.getScriptLock();lock.waitLock(15000);

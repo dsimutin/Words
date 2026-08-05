@@ -1,4 +1,4 @@
-const CACHE='words-shell-v109';
+const CACHE='words-shell-v110';
 const SHELL=['./','./index.html','./streak.js','./manifest.webmanifest','./icon-words-v3-180.png','./icon-words-v3-512.png','./launch-cards.webp','./achievements/first.webp','./achievements/student.webp','./achievements/rhythm.webp','./achievements/practice.webp','./achievements/habit.webp','./achievements/speaker.webp','./achievements/explorer.webp','./achievements/linguist.webp','./achievements/master.webp','./achievements/expert.webp','./achievements/legend.webp','./achievements/locked-1.webp','./achievements/locked-3.webp','./achievements/locked-7.webp','./achievements/locked-14.webp','./achievements/locked-21.webp','./achievements/locked-30.webp','./achievements/locked-50.webp','./achievements/locked-75.webp','./achievements/locked-100.webp','./achievements/locked-180.webp','./achievements/locked-365.webp'];
 SHELL.push('./launch-branch.webp');
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)).then(()=>self.skipWaiting())));
