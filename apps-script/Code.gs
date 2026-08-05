@@ -248,7 +248,7 @@ function loadHomework(token){
   return{available:true,sheetName:sheetName,total:all.length,remaining:all.filter(x=>homeworkPriority_(x)<2).length,items:selected.map(x=>({id:x.id,prompt:x.prompt,hints:homeworkHintWords_(x.correct),previousStatus:x.status,attempts:x.attempts}))};
 }
 function normalizeHomeworkAnswer_(value){
-  return String(value||'').toLowerCase().replace(/[’‘`]/g,"'").replace(/\b(i'm)\b/g,'i am').replace(/\b(you're)\b/g,'you are').replace(/\b(she's)\b/g,'she is').replace(/\b(he's)\b/g,'he is').replace(/\b(we're)\b/g,'we are').replace(/\b(they're)\b/g,'they are').replace(/[^a-zа-яё0-9']+/gi,' ').replace(/\s+/g,' ').trim();
+  return String(value||'').toLowerCase().replace(/[’‘`]/g,"'").replace(/\b(i'm)\b/g,'i am').replace(/\b(you're)\b/g,'you are').replace(/\b(she's)\b/g,'she is').replace(/\b(he's)\b/g,'he is').replace(/\b(we're)\b/g,'we are').replace(/\b(they're)\b/g,'they are').replace(/\bneighbour(s?)\b/g,'neighbor$1').replace(/\bcolour(s?)\b/g,'color$1').replace(/\bfavourite(s?)\b/g,'favorite$1').replace(/\bcentre(s?)\b/g,'center$1').replace(/\btravelling\b/g,'traveling').replace(/[^a-zа-яё0-9']+/gi,' ').replace(/\s+/g,' ').trim();
 }
 function editDistance_(a,b){const prev=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let diagonal=prev[0];prev[0]=i;for(let j=1;j<=b.length;j++){const old=prev[j];prev[j]=Math.min(prev[j]+1,prev[j-1]+1,diagonal+(a[i-1]===b[j-1]?0:1));diagonal=old;}}return prev[b.length];}
 function homeworkTokenOverlap_(a,b){

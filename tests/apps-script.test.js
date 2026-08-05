@@ -99,6 +99,12 @@ test('проверка домашней работы не зависит от р
   assert.equal(server.gradeHomeworkAnswer_('I speak some English.','I speak a little English.','').result,'wrong');
 });
 
+test('британское и американское написание считаются равнозначными',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_('My neighbour is very polite.','My neighbor is very polite.','').result,'correct');
+  assert.equal(server.gradeHomeworkAnswer_('This is my favourite colour.','This is my favorite color.','').result,'correct');
+});
+
 test('небольшая опечатка помечается как почти верный ответ',()=>{
   const server=loadServer();
   assert.equal(server.gradeHomeworkAnswer_('She replid after lunch.','She replied after lunch.','').result,'almost');
