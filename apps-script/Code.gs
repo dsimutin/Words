@@ -37,7 +37,7 @@ function doGet(e) {
 function apiRequest_(e){
   const callback=String(e.parameter.callback||'').replace(/[^a-zA-Z0-9_.$]/g,'');
   if(!callback)throw new Error('Callback is required.');
-  const allowed={bootstrap:bootstrap,loadLesson:loadLesson,progressDetails:progressDetails,saveLesson:saveLesson,loadHomework:loadHomework,checkHomeworkAnswer:checkHomeworkAnswer,ackAchievement:ackAchievement,teacherDashboard:teacherDashboard,sourceTabs:sourceTabs,createStudent:createStudent,updateStudent:updateStudent,setStudentActive:setStudentActive,resetStudentProgress:resetStudentProgress,deleteStudent:deleteStudent};
+  const allowed={bootstrap:bootstrap,loadLesson:loadLesson,progressDetails:progressDetails,saveLesson:saveLesson,loadHomework:loadHomework,checkHomeworkAnswer:checkHomeworkAnswer,finishHomeworkSession:finishHomeworkSession,ackAchievement:ackAchievement,teacherDashboard:teacherDashboard,sourceTabs:sourceTabs,createStudent:createStudent,updateStudent:updateStudent,setStudentActive:setStudentActive,resetStudentProgress:resetStudentProgress,deleteStudent:deleteStudent};
   const action=String(e.parameter.action||''),fn=allowed[action];
   let response;
   try{
@@ -296,6 +296,23 @@ function checkHomeworkAnswer(token,itemId,answer,hintLevel){
     const grade=gradeHomeworkAnswer_(answer,item.correct,item.alternatives),columns=homeworkColumns_(sheet,true),row=sheet.getRange(item.row,1,1,sheet.getLastColumn()).getValues()[0];
     if(columns.answer>=0)row[columns.answer]=String(answer||'').trim();if(columns.status>=0)row[columns.status]=grade.status;if(columns.attempts>=0)row[columns.attempts]=Number(item.attempts||0)+1;if(columns.hint>=0)row[columns.hint]=Number(hintLevel||0)>0?'Да · уровень '+Number(hintLevel):'Нет';if(columns.attemptedAt>=0)row[columns.attemptedAt]=new Date();sheet.getRange(item.row,1,1,row.length).setValues([row]);
     return{ok:true,result:grade.result,status:grade.status,message:grade.message,correctAnswer:item.correct,showTeacherVariant:grade.result!=='correct'||normalizeHomeworkAnswer_(answer)!==normalizeHomeworkAnswer_(item.correct),attempts:Number(item.attempts||0)+1,hintUsed:Number(hintLevel||0)>0};
+  }finally{lock.releaseLock();}
+}
+function finishHomeworkSession(token,score,total,sessionId,timeZone){
+  const lock=LockService.getScriptLock();lock.waitLock(15000);
+  try{
+    const student=requireStudent_(token),ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),activitySheet=ensureSheet_(ss,CONFIG.sheets.activity,['timestamp','token','category','score','total','known','unknown','recovered','session_id']),activity=completedActivity_(rowsAsObjects_(activitySheet).filter(x=>String(x.token)===String(token)));
+    sessionId=String(sessionId||'');if(sessionId&&activity.some(x=>String(x.session_id)===sessionId))return{ok:true,duplicate:true,summary:studentSummary_(token,timeZone)};
+    const now=new Date(),todayKey=dateKey_(now,timeZone),studentsSheet=ss.getSheetByName(CONFIG.sheets.students),students=rowsAsObjects_(studentsSheet),studentIndex=students.findIndex(x=>secureEqual_(String(x.token),String(token))),studentRow=studentIndex+2;
+    activitySheet.appendRow([now,token,'homework',Number(score||0),Number(total||HOMEWORK_SIZE_),Number(score||0),Math.max(0,Number(total||HOMEWORK_SIZE_)-Number(score||0)),0,sessionId]);
+    let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),freezeDates=freezeDates_(student),freezeUsed=false;
+    const previousKeys=activity.map(x=>dateKey_(x.timestamp,timeZone)).filter(k=>k&&k<todayKey).sort(),lastKey=previousKeys[previousKeys.length-1]||'';
+    if(lastKey&&dayDistance_(lastKey,todayKey)===2&&freezeCount>0){const missed=previousDateKey_(todayKey);if(freezeDates.indexOf(missed)<0){freezeDates.push(missed);freezeCount--;freezeUsed=true;}}
+    student.freeze_dates=freezeDates.join(',');student.freeze_count=freezeCount;
+    const updated=activity.concat([{timestamp:now,score:Number(score||0),total:Number(total||HOMEWORK_SIZE_),session_id:sessionId}]),streak=streakStatsForStudent_(updated,student,timeZone,now),best=Math.max(Number(student.best_streak||0),streak.longest),reached=highestAchievementDays_(best),previousAchievement=Number(student.last_achievement_days||0);
+    student.best_streak=best;if(reached>previousAchievement){student.last_achievement_days=reached;student.pending_achievement_days=reached;student.pending_achievement_at=now;}
+    saveStudentMeta_(studentsSheet,studentRow,student);studentsSheet.getRange(studentRow,7).setValue(now);clearStudentDataCache_(token);
+    return{ok:true,summary:{today:updated.filter(x=>dateKey_(x.timestamp,timeZone)===todayKey).length,streak:streak.current,longestStreak:best,totalLessons:updated.length,freezeCount:freezeCount,freezeUsed:freezeUsed,pendingAchievement:reached>previousAchievement?{days:reached,at:dateIso_(now)}:null}};
   }finally{lock.releaseLock();}
 }
 function homeworkSummaryForStudent_(ss,student){

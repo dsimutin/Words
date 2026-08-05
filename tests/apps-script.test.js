@@ -152,6 +152,13 @@ test('клиент сохраняет домашнюю работу после �
   assert.match(client,/Date\.now\(\)-Number\(saved\.savedAt\|\|0\)>7\*86400000/);
 });
 
+test('завершённая домашняя работа записывается как дневное занятие',()=>{
+  const server=fs.readFileSync(path.join(__dirname,'../apps-script/Code.gs'),'utf8'),client=fs.readFileSync(path.join(__dirname,'../docs/index.html'),'utf8');
+  assert.match(server,/function finishHomeworkSession/);
+  assert.match(server,/appendRow\(\[now,token,'homework'/);
+  assert.match(client,/finishHomeworkSession',TOKEN,homeworkScore/);
+});
+
 test('кабинет учителя автоматически суммирует последние ответы',()=>{
   const server=loadServer(),sheet={};
   server.homeworkRows_=()=>[
