@@ -20,6 +20,14 @@ test('серверный лимит заморозок равен семи',()=>
   assert.doesNotMatch(source,/Math\.min\(2\s*,|freezeCount\s*<\s*2(?:\D|$)/);
 });
 
+test('второе полноценное занятие за день добавляет заморозку',()=>{
+  const server=loadServer();server.Utilities.formatDate=value=>value.toISOString().slice(0,10);
+  const student={freeze_bonus_date:''},activity=[{timestamp:new Date('2026-08-05T08:00:00Z'),total:7},{timestamp:new Date('2026-08-05T12:00:00Z'),total:7}];
+  const bonus=server.dailyFreezeBonus_(activity,student,'UTC','2026-08-05',6);
+  assert.deepEqual({count:bonus.count,earned:bonus.earned,reason:bonus.reason},{count:7,earned:true,reason:'второе занятие за день'});
+  assert.equal(student.freeze_bonus_date,'2026-08-05');
+});
+
 test('остаток новых слов уменьшается и не бывает отрицательным',()=>{
   const server=loadServer();
   assert.equal(server.remainingStock_(200,57),143);

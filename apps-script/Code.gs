@@ -13,9 +13,14 @@ const MAX_FREEZE_DAYS_ = 7;
 const STUDENT_DATA_CACHE_SECONDS_ = 120;
 const STUDENT_BOOTSTRAP_CACHE_SECONDS_ = 300;
 function completedActivity_(rows){ return (rows||[]).filter(x=>Number(x.total||0)>0); }
+function dailyFreezeBonus_(activity,student,timeZone,todayKey,freezeCount){
+  const completedToday=(activity||[]).filter(x=>dateKey_(x.timestamp,timeZone)===todayKey&&Number(x.total||0)>=7).length;
+  if(completedToday>=2&&String(student.freeze_bonus_date||'')!==todayKey&&freezeCount<MAX_FREEZE_DAYS_){student.freeze_bonus_date=todayKey;return{count:freezeCount+1,earned:true,reason:'второе занятие за день'};}
+  return{count:freezeCount,earned:false,reason:''};
+}
 function highestAchievementDays_(streak){ let best=0; ACHIEVEMENT_DAYS_.forEach(d=>{if(Number(streak)>=d)best=d;}); return best; }
 function studentDataCacheKey_(token){return'student-data-v1:'+String(token||'');}
-function studentBootstrapCacheKey_(token){return'student-bootstrap-v1:'+String(token||'');}
+function studentBootstrapCacheKey_(token){return'student-bootstrap-v2:'+String(token||'');}
 function clearStudentDataCache_(token){try{const cache=CacheService.getScriptCache();cache.remove(studentDataCacheKey_(token));cache.remove(studentBootstrapCacheKey_(token));}catch(e){}}
 function studentData_(ss,token){
   const cache=CacheService.getScriptCache(),key=studentDataCacheKey_(token),cached=cache.get(key);if(cached)try{return JSON.parse(cached);}catch(e){}
@@ -107,11 +112,13 @@ function bootstrap(token, teacherKey, timeZone) {
   const data=studentData_(ss,token),p=data.progress;
   const activity=data.activity,streak=streakStatsForStudent_(activity,student,timeZone,now),bestStreak=Math.max(Number(student.best_streak||0),streak.longest);
   const summary={studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,almost:p.filter(x=>Number(x.level)===2).length,due:p.filter(x=>new Date(x.next_review_at||0)<=now).length,today:activity.filter(x=>dateKey_(x.timestamp,timeZone)===streak.todayKey).length};
+  let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),dailyBonus=dailyFreezeBonus_(activity,student,timeZone,streak.todayKey,freezeCount);
+  if(dailyBonus.earned){freezeCount=dailyBonus.count;student.freeze_count=freezeCount;saveStudentMeta_(studentsSheet,studentIndex+2,student);}
   const wordTotal=sourceRowCount_(ss.getSheetByName(student.words_tab)),verbTotal=sourceRowCount_(ss.getSheetByName(student.verbs_tab));
   const wordStudied=p.filter(x=>x.category==='word').length,verbStudied=p.filter(x=>x.category==='verb').length;
   const counts={words:wordTotal,verbs:verbTotal,newWords:remainingStock_(wordTotal,wordStudied),newVerbs:remainingStock_(verbTotal,verbStudied)};
   const result={ role:'student',student:{name:student.name,language:String(student.language||'en')},counts:counts,
-    studied:summary.studied,learned:summary.learned,almost:summary.almost,due:summary.due,today:summary.today,streak:streak.current,longestStreak:bestStreak,totalLessons:activity.length,freezeCount:Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),pendingAchievement:Number(student.pending_achievement_days||0)>0?{days:Number(student.pending_achievement_days),at:dateIso_(student.pending_achievement_at)}:null };
+    studied:summary.studied,learned:summary.learned,almost:summary.almost,due:summary.due,today:summary.today,streak:streak.current,longestStreak:bestStreak,totalLessons:activity.length,freezeCount:freezeCount,pendingAchievement:Number(student.pending_achievement_days||0)>0?{days:Number(student.pending_achievement_days),at:dateIso_(student.pending_achievement_at)}:null };
   try{const json=JSON.stringify(result);if(json.length<95000)bootstrapCache.put(bootstrapKey,json,STUDENT_BOOTSTRAP_CACHE_SECONDS_);}catch(e){}
   return result;
 }
@@ -322,8 +329,9 @@ function finishHomeworkSession(token,score,total,sessionId,timeZone){
     student.freeze_dates=freezeDates.join(',');student.freeze_count=freezeCount;
     const updated=activity.concat([{timestamp:now,score:Number(score||0),total:Number(total||HOMEWORK_SIZE_),session_id:sessionId}]),streak=streakStatsForStudent_(updated,student,timeZone,now),best=Math.max(Number(student.best_streak||0),streak.longest),reached=highestAchievementDays_(best),previousAchievement=Number(student.last_achievement_days||0);
     student.best_streak=best;if(reached>previousAchievement){student.last_achievement_days=reached;student.pending_achievement_days=reached;student.pending_achievement_at=now;}
+    const dailyBonus=dailyFreezeBonus_(updated,student,timeZone,todayKey,freezeCount);freezeCount=dailyBonus.count;student.freeze_count=freezeCount;
     saveStudentMeta_(studentsSheet,studentRow,student);studentsSheet.getRange(studentRow,7).setValue(now);clearStudentDataCache_(token);
-    return{ok:true,summary:{today:updated.filter(x=>dateKey_(x.timestamp,timeZone)===todayKey).length,streak:streak.current,longestStreak:best,totalLessons:updated.length,freezeCount:freezeCount,freezeUsed:freezeUsed,pendingAchievement:reached>previousAchievement?{days:reached,at:dateIso_(now)}:null}};
+    return{ok:true,summary:{today:updated.filter(x=>dateKey_(x.timestamp,timeZone)===todayKey).length,streak:streak.current,longestStreak:best,totalLessons:updated.length,freezeCount:freezeCount,freezeUsed:freezeUsed,freezeEarned:dailyBonus.earned,freezeReason:dailyBonus.reason,pendingAchievement:reached>previousAchievement?{days:reached,at:dateIso_(now)}:null}};
   }finally{lock.releaseLock();}
 }
 function homeworkSummaryForStudent_(ss,student){
@@ -393,8 +401,7 @@ function saveLesson(token,payload) {
     const reached=highestAchievementDays_(bestStreak),previousAchievement=Number(student.last_achievement_days||0);
     if(reached>previousAchievement){student.last_achievement_days=reached;student.pending_achievement_days=reached;student.pending_achievement_at=now;}
     if(bestStreak>=7&&!truthy_(student.seven_day_freeze_awarded)&&freezeCount<MAX_FREEZE_DAYS_){freezeCount++;student.seven_day_freeze_awarded=true;freezeEarned=true;freezeReason='7 дней подряд';}
-    const qualifyingToday=updatedActivity.filter(r=>dateKey_(r.timestamp,payload.timeZone)===todayKey&&Number(r.total||0)>=7&&Number(r.score||0)>=5).length;
-    if(qualifyingToday>=3&&String(student.freeze_bonus_date||'')!==todayKey&&freezeCount<MAX_FREEZE_DAYS_){freezeCount++;student.freeze_bonus_date=todayKey;freezeEarned=true;freezeReason='третье занятие за день';}
+    const dailyBonus=dailyFreezeBonus_(updatedActivity,student,payload.timeZone,todayKey,freezeCount);if(dailyBonus.earned){freezeCount=dailyBonus.count;freezeEarned=true;freezeReason=dailyBonus.reason;}
     student.freeze_count=freezeCount;saveStudentMeta_(studentsSheet,studentRow+1,student);clearStudentDataCache_(token);
     return {ok:true,summary:{studied:p.length,learned:p.filter(r=>Number(r[4])>=3).length,almost:p.filter(r=>Number(r[4])===2).length,due:p.filter(r=>new Date(r[7]||0)<=now).length,today:updatedActivity.filter(r=>dateKey_(r.timestamp,payload.timeZone)===todayKey).length,streak:streak.current,longestStreak:bestStreak,totalLessons:streak.totalLessons,freezeCount:freezeCount,freezeEarned:freezeEarned,freezeUsed:freezeUsed,freezeReason:freezeReason,pendingAchievement:reached>previousAchievement?{days:reached,at:dateIso_(now)}:null}};
   } finally { lock.releaseLock(); }
