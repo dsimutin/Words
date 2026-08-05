@@ -139,6 +139,13 @@ test('дата заморозки из ячейки Date сохраняет се
   assert.equal(server.freezeDates_({freeze_dates:new Date('2026-08-03T00:00:00Z')}).join(','),'2026-08-03');
 });
 
+test('клиент сохраняет домашнюю работу после каждого проверенного ответа',()=>{
+  const client=fs.readFileSync(path.join(__dirname,'../docs/index.html'),'utf8');
+  assert.match(client,/saveHomeworkSession\(homeworkIndex\+1\)/);
+  assert.match(client,/wordsHomeworkSession:/);
+  assert.match(client,/Date\.now\(\)-Number\(saved\.savedAt\|\|0\)>7\*86400000/);
+});
+
 test('кабинет учителя автоматически суммирует последние ответы',()=>{
   const server=loadServer(),sheet={};
   server.homeworkRows_=()=>[
