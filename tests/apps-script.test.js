@@ -109,6 +109,28 @@ test('допустимые варианты ответа разделяются 
   assert.equal(server.gradeHomeworkAnswer_('I am going to stay home.','I will stay home.','I am going to stay home. | I plan to stay home.').result,'correct');
 });
 
+test('перестановка слов засчитывается при совпадении структуры от 70 процентов',()=>{
+  const server=loadServer(),grade=server.gradeHomeworkAnswer_('After work I am tired.','I am tired after work.','');
+  assert.equal(grade.result,'correct');
+  assert.ok(grade.similarity>=.7);
+});
+
+test('отрицание и замена ключевого смысла не проходят по проценту сходства',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_('I am not tired after work.','I am tired after work.','').result,'wrong');
+  assert.equal(server.gradeHomeworkAnswer_('I am happy after work.','I am tired after work.','').result,'wrong');
+});
+
+test('simple и continuous можно явно добавить как допустимые варианты',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_('I go to work.','I am going to work.','I go to work.').result,'correct');
+});
+
+test('дата заморозки из ячейки Date сохраняет серию',()=>{
+  const server=loadServer();server.Utilities.formatDate=value=>value.toISOString().slice(0,10);
+  assert.equal(server.freezeDates_({freeze_dates:new Date('2026-08-03T00:00:00Z')}).join(','),'2026-08-03');
+});
+
 test('кабинет учителя автоматически суммирует последние ответы',()=>{
   const server=loadServer(),sheet={};
   server.homeworkRows_=()=>[

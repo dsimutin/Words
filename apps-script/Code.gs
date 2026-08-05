@@ -126,7 +126,11 @@ function streakStatsFromKeys_(keys,todayKey){
 function streakStats_(activity,timeZone,now){const todayKey=dateKey_(now||new Date(),timeZone),keys=(activity||[]).map(x=>dateKey_(x.timestamp,timeZone)).filter(Boolean),stats=streakStatsFromKeys_(keys,todayKey);stats.totalLessons=(activity||[]).length;return stats;
 }
 
-function freezeDates_(student){return String(student&&student.freeze_dates||'').split(',').map(x=>x.trim()).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));}
+function freezeDates_(student){
+  const value=student&&student.freeze_dates;
+  if(Object.prototype.toString.call(value)==='[object Date]'&&!isNaN(value.getTime()))return[Utilities.formatDate(value,Session.getScriptTimeZone(),'yyyy-MM-dd')];
+  return String(value||'').split(',').map(x=>x.trim()).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));
+}
 function streakStatsForStudent_(activity,student,timeZone,now){
   const todayKey=dateKey_(now||new Date(),timeZone),keys=(activity||[]).map(x=>dateKey_(x.timestamp,timeZone)).filter(Boolean).concat(freezeDates_(student)),stats=streakStatsFromKeys_(keys,todayKey);stats.totalLessons=(activity||[]).length;return stats;
 }
@@ -247,10 +251,36 @@ function normalizeHomeworkAnswer_(value){
   return String(value||'').toLowerCase().replace(/[’‘`]/g,"'").replace(/\b(i'm)\b/g,'i am').replace(/\b(you're)\b/g,'you are').replace(/\b(she's)\b/g,'she is').replace(/\b(he's)\b/g,'he is').replace(/\b(we're)\b/g,'we are').replace(/\b(they're)\b/g,'they are').replace(/[^a-zа-яё0-9']+/gi,' ').replace(/\s+/g,' ').trim();
 }
 function editDistance_(a,b){const prev=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let diagonal=prev[0];prev[0]=i;for(let j=1;j<=b.length;j++){const old=prev[j];prev[j]=Math.min(prev[j]+1,prev[j-1]+1,diagonal+(a[i-1]===b[j-1]?0:1));diagonal=old;}}return prev[b.length];}
+function homeworkTokenOverlap_(a,b){
+  const counts={};a.forEach(x=>counts[x]=(counts[x]||0)+1);let common=0;b.forEach(x=>{if(counts[x]>0){counts[x]--;common++;}});
+  return a.length&&b.length?2*common/(a.length+b.length):0;
+}
+function homeworkLcsRatio_(a,b){
+  const row=Array(b.length+1).fill(0);for(let i=1;i<=a.length;i++){let diagonal=0;for(let j=1;j<=b.length;j++){const old=row[j];row[j]=a[i-1]===b[j-1]?diagonal+1:Math.max(row[j],row[j-1]);diagonal=old;}}
+  return Math.max(a.length,b.length)?row[b.length]/Math.max(a.length,b.length):0;
+}
+function homeworkCriticalMatch_(given,expected){
+  const groups=[['not','never','no'],['little','few','some','many','much'],['yesterday','today','tomorrow'],['i','you','he','she','we','they','it']],numbers=x=>x.filter(t=>/^\d+$/.test(t)).sort().join('|');
+  if(numbers(given)!==numbers(expected))return false;
+  for(let i=0;i<groups.length;i++){const a=given.filter(x=>groups[i].indexOf(x)>=0),b=expected.filter(x=>groups[i].indexOf(x)>=0);if(a.join('|')!==b.join('|'))return false;}
+  return true;
+}
+function homeworkContentCoverage_(given,expected){
+  const stop='a an the am is are was were be been being do does did have has had will would can could should may might must to of in on at after before for from with and or but because this that my your his her our their'.split(' '),content=x=>x.filter(t=>stop.indexOf(t)<0);
+  const a=content(given),b=content(expected),counts={};a.forEach(x=>counts[x]=(counts[x]||0)+1);let common=0;b.forEach(x=>{if(counts[x]>0){counts[x]--;common++;}});
+  return Math.max(a.length,b.length)?common/Math.max(a.length,b.length):1;
+}
+function homeworkSimilarity_(given,expected){
+  const a=given.split(' ').filter(Boolean),b=expected.split(' ').filter(Boolean);if(!homeworkCriticalMatch_(a,b)||homeworkContentCoverage_(a,b)<.75)return 0;
+  const chars=1-editDistance_(given,expected)/Math.max(given.length,expected.length,1);
+  return .55*homeworkTokenOverlap_(a,b)+.25*homeworkLcsRatio_(a,b)+.2*Math.max(0,chars);
+}
 function gradeHomeworkAnswer_(answer,correct,alternatives){
   const given=normalizeHomeworkAnswer_(answer),accepted=[correct].concat(String(alternatives||'').split('|')).map(normalizeHomeworkAnswer_).filter(Boolean);
   if(!given)return{result:'wrong',status:'Неверно',message:'Сначала напишите перевод.'};
   if(accepted.indexOf(given)>=0)return{result:'correct',status:'Верно',message:'Верно! Отличная работа.'};
+  const similarity=Math.max.apply(null,accepted.map(x=>homeworkSimilarity_(given,x)));
+  if(similarity>=.7)return{result:'correct',status:'Верно',similarity:similarity,message:'Верно! Структура и грамматика совпадают на '+Math.round(similarity*100)+'%.'};
   const closest=Math.min.apply(null,accepted.map(x=>editDistance_(given,x))),length=Math.max(given.length,Math.min.apply(null,accepted.map(x=>x.length)));
   if(closest<=Math.max(1,Math.floor(length*.1)))return{result:'almost',status:'Почти верно',message:'Почти верно — проверьте написание и грамматику.'};
   return{result:'wrong',status:'Неверно',message:'Пока неверно. Посмотрите правильный вариант.'};
