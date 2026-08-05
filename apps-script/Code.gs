@@ -280,7 +280,7 @@ function gradeHomeworkAnswer_(answer,correct,alternatives){
   if(!given)return{result:'wrong',status:'Неверно',message:'Сначала напишите перевод.'};
   if(accepted.indexOf(given)>=0)return{result:'correct',status:'Верно',message:'Верно! Отличная работа.'};
   const similarity=Math.max.apply(null,accepted.map(x=>homeworkSimilarity_(given,x)));
-  if(similarity>=.7)return{result:'correct',status:'Верно',similarity:similarity,message:'Верно! Хорошая формулировка.'};
+  if(similarity>=.7)return{result:'correct',status:'Верно',similarity:similarity,message:'Верно! Отличная работа.'};
   const closest=Math.min.apply(null,accepted.map(x=>editDistance_(given,x))),length=Math.max(given.length,Math.min.apply(null,accepted.map(x=>x.length)));
   if(closest<=Math.max(1,Math.floor(length*.1)))return{result:'almost',status:'Почти верно',message:'Почти верно — проверьте написание и грамматику.'};
   return{result:'wrong',status:'Неверно',message:'Пока неверно. Посмотрите правильный вариант.'};
