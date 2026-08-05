@@ -292,7 +292,7 @@ function checkHomeworkAnswer(token,itemId,answer,hintLevel){
     const item=homeworkRows_(sheet).find(x=>String(x.id)===String(itemId));if(!item)throw new Error('Задание не найдено. Обновите страницу.');
     const grade=gradeHomeworkAnswer_(answer,item.correct,item.alternatives),columns=homeworkColumns_(sheet,true),row=sheet.getRange(item.row,1,1,sheet.getLastColumn()).getValues()[0];
     if(columns.answer>=0)row[columns.answer]=String(answer||'').trim();if(columns.status>=0)row[columns.status]=grade.status;if(columns.attempts>=0)row[columns.attempts]=Number(item.attempts||0)+1;if(columns.hint>=0)row[columns.hint]=Number(hintLevel||0)>0?'Да · уровень '+Number(hintLevel):'Нет';if(columns.attemptedAt>=0)row[columns.attemptedAt]=new Date();sheet.getRange(item.row,1,1,row.length).setValues([row]);
-    return{ok:true,result:grade.result,status:grade.status,message:grade.message,correctAnswer:item.correct,attempts:Number(item.attempts||0)+1,hintUsed:Number(hintLevel||0)>0};
+    return{ok:true,result:grade.result,status:grade.status,message:grade.message,correctAnswer:item.correct,showTeacherVariant:grade.result!=='correct'||normalizeHomeworkAnswer_(answer)!==normalizeHomeworkAnswer_(item.correct),attempts:Number(item.attempts||0)+1,hintUsed:Number(hintLevel||0)>0};
   }finally{lock.releaseLock();}
 }
 function homeworkSummaryForStudent_(ss,student){

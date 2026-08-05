@@ -94,6 +94,7 @@ test('подтверждение ачивки не расходует замор
 
 test('проверка домашней работы не зависит от регистра и пунктуации',()=>{
   const server=loadServer();
+  assert.equal(server.normalizeHomeworkAnswer_('Please speak slowly!'),server.normalizeHomeworkAnswer_('Please speak slowly.'));
   assert.equal(server.gradeHomeworkAnswer_("i'm tired after work",'I am tired after work.','').result,'correct');
   assert.equal(server.gradeHomeworkAnswer_('Please speak slowly!','Please speak slowly.','').result,'correct');
   assert.equal(server.gradeHomeworkAnswer_('I speak some English.','I speak a little English.','').result,'wrong');
