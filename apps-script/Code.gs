@@ -11,10 +11,12 @@ const CONFIG = {
 const ACHIEVEMENT_DAYS_ = [1,3,7,14,21,30,50,75,100,180,365];
 const MAX_FREEZE_DAYS_ = 7;
 const STUDENT_DATA_CACHE_SECONDS_ = 120;
+const STUDENT_BOOTSTRAP_CACHE_SECONDS_ = 300;
 function completedActivity_(rows){ return (rows||[]).filter(x=>Number(x.total||0)>0); }
 function highestAchievementDays_(streak){ let best=0; ACHIEVEMENT_DAYS_.forEach(d=>{if(Number(streak)>=d)best=d;}); return best; }
 function studentDataCacheKey_(token){return'student-data-v1:'+String(token||'');}
-function clearStudentDataCache_(token){try{CacheService.getScriptCache().remove(studentDataCacheKey_(token));}catch(e){}}
+function studentBootstrapCacheKey_(token){return'student-bootstrap-v1:'+String(token||'');}
+function clearStudentDataCache_(token){try{const cache=CacheService.getScriptCache();cache.remove(studentDataCacheKey_(token));cache.remove(studentBootstrapCacheKey_(token));}catch(e){}}
 function studentData_(ss,token){
   const cache=CacheService.getScriptCache(),key=studentDataCacheKey_(token),cached=cache.get(key);if(cached)try{return JSON.parse(cached);}catch(e){}
   const data={progress:rowsAsObjects_(ss.getSheetByName(CONFIG.sheets.progress)).filter(x=>String(x.token)===String(token)),activity:completedActivity_(rowsAsObjects_(ss.getSheetByName(CONFIG.sheets.activity)).filter(x=>String(x.token)===String(token)))};
@@ -91,6 +93,8 @@ function ensureSourceIds_(sheet) {
 
 function bootstrap(token, teacherKey, timeZone) {
   if (teacherKey && isTeacher_(teacherKey)) return { role:'teacher',dashboard:teacherDashboard_(),tabs:sourceTabs_() };
+  const bootstrapCache=CacheService.getScriptCache(),bootstrapKey=studentBootstrapCacheKey_(token),cachedBootstrap=bootstrapCache.get(bootstrapKey);
+  if(cachedBootstrap)try{return JSON.parse(cachedBootstrap);}catch(e){}
   const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),studentsSheet=ss.getSheetByName(CONFIG.sheets.students);
   const students=rowsAsObjects_(studentsSheet),studentIndex=students.findIndex(x=>secureEqual_(String(x.token),String(token)));
   const student=studentIndex>=0?students[studentIndex]:null;
@@ -99,15 +103,17 @@ function bootstrap(token, teacherKey, timeZone) {
     const columns=ensureStudentMetaColumns_(studentsSheet),row=studentIndex+2,count=Math.min(MAX_FREEZE_DAYS_,Math.max(0,Number(student.freeze_count||0))+1);
     studentsSheet.getRange(row,columns.freeze_count).setValue(count);studentsSheet.getRange(row,columns.welcome_freeze_awarded).setValue(true);student.freeze_count=count;student.welcome_freeze_awarded=true;
   }
-  const now=new Date(),lastSeen=new Date(student.last_seen_at||0);if(isNaN(lastSeen.getTime())||now-lastSeen>300000)studentsSheet.getRange(studentIndex+2,7).setValue(now);
+  const now=new Date();
   const data=studentData_(ss,token),p=data.progress;
   const activity=data.activity,streak=streakStatsForStudent_(activity,student,timeZone,now),bestStreak=Math.max(Number(student.best_streak||0),streak.longest);
   const summary={studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,almost:p.filter(x=>Number(x.level)===2).length,due:p.filter(x=>new Date(x.next_review_at||0)<=now).length,today:activity.filter(x=>dateKey_(x.timestamp,timeZone)===streak.todayKey).length};
   const wordTotal=sourceRowCount_(ss.getSheetByName(student.words_tab)),verbTotal=sourceRowCount_(ss.getSheetByName(student.verbs_tab));
   const wordStudied=p.filter(x=>x.category==='word').length,verbStudied=p.filter(x=>x.category==='verb').length;
   const counts={words:wordTotal,verbs:verbTotal,newWords:remainingStock_(wordTotal,wordStudied),newVerbs:remainingStock_(verbTotal,verbStudied)};
-  return { role:'student',student:{name:student.name,language:String(student.language||'en')},counts:counts,
+  const result={ role:'student',student:{name:student.name,language:String(student.language||'en')},counts:counts,
     studied:summary.studied,learned:summary.learned,almost:summary.almost,due:summary.due,today:summary.today,streak:streak.current,longestStreak:bestStreak,totalLessons:activity.length,freezeCount:Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),pendingAchievement:Number(student.pending_achievement_days||0)>0?{days:Number(student.pending_achievement_days),at:dateIso_(student.pending_achievement_at)}:null };
+  try{const json=JSON.stringify(result);if(json.length<95000)bootstrapCache.put(bootstrapKey,json,STUDENT_BOOTSTRAP_CACHE_SECONDS_);}catch(e){}
+  return result;
 }
 
 function dateKey_(value,timeZone){
@@ -448,14 +454,14 @@ function updateStudent(teacherKey,token,data){
   if(!name||!wordsTab)throw new Error('Укажите имя и вкладку со словами.');
   const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);if(!ss.getSheetByName(wordsTab))throw new Error('Вкладка «'+wordsTab+'» не найдена.');if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');if(homeworkTab&&!ss.getSheetByName(homeworkTab))throw new Error('Вкладка предложений «'+homeworkTab+'» не найдена.');
   const sheet=ss.getSheetByName(CONFIG.sheets.students),homeworkColumn=ensureStudentHomeworkColumn_(sheet),rows=sheet.getDataRange().getValues();
-  for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(token)){sheet.getRange(i+1,2,1,3).setValues([[name,wordsTab,verbsTab]]);sheet.getRange(i+1,8).setValue(language);if(homeworkColumn)sheet.getRange(i+1,homeworkColumn).setValue(homeworkTab);return teacherDashboard_();}
+  for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(token)){sheet.getRange(i+1,2,1,3).setValues([[name,wordsTab,verbsTab]]);sheet.getRange(i+1,8).setValue(language);if(homeworkColumn)sheet.getRange(i+1,homeworkColumn).setValue(homeworkTab);clearStudentDataCache_(token);return teacherDashboard_();}
   throw new Error('Ученик не найден.');
 }
 
 function setStudentActive(teacherKey,token,active){
   if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');
   const sheet=SpreadsheetApp.openById(CONFIG.spreadsheetId).getSheetByName(CONFIG.sheets.students),v=sheet.getDataRange().getValues();
-  for(let i=1;i<v.length;i++)if(v[i][0]===token)sheet.getRange(i+1,5).setValue(Boolean(active));
+  for(let i=1;i<v.length;i++)if(v[i][0]===token)sheet.getRange(i+1,5).setValue(Boolean(active));clearStudentDataCache_(token);
   return teacherDashboard_();
 }
 
@@ -531,6 +537,7 @@ function ackAchievement(token,days){
     const cols=ensureStudentMetaColumns_(sheet),row=index+2;
     sheet.getRange(row,cols.pending_achievement_days).clearContent();
     sheet.getRange(row,cols.pending_achievement_at).clearContent();
+    clearStudentDataCache_(token);
     return studentSummary_(token,'Europe/Moscow');
   } finally {lock.releaseLock();}
 }
