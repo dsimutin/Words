@@ -70,3 +70,43 @@ test('метаданные ученика сохраняются одной за
   assert.equal(writes[0].values[0][1],4);
   assert.equal(writes[0].values[0][8],7);
 });
+
+test('домашняя работа выдаёт не больше семи предложений и сначала новые',()=>{
+  const server=loadServer();
+  const items=Array.from({length:15},(_,i)=>({row:i+2,id:String(i+1),status:i<3?'Верно':'Не проверено',attempts:i<3?1:0}));
+  const selected=server.selectHomeworkItems_(items,7);
+  assert.equal(selected.length,7);
+  assert.ok(selected.every(item=>item.status==='Не проверено'));
+  assert.deepEqual(selected.map(item=>item.id),['4','5','6','7','8','9','10']);
+});
+
+test('проверка домашней работы не зависит от регистра и пунктуации',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_("i'm tired after work",'I am tired after work.','').result,'correct');
+  assert.equal(server.gradeHomeworkAnswer_('Please speak slowly!','Please speak slowly.','').result,'correct');
+  assert.equal(server.gradeHomeworkAnswer_('I speak some English.','I speak a little English.','').result,'wrong');
+});
+
+test('небольшая опечатка помечается как почти верный ответ',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_('She replid after lunch.','She replied after lunch.','').result,'almost');
+});
+
+test('допустимые варианты ответа разделяются вертикальной чертой',()=>{
+  const server=loadServer();
+  assert.equal(server.gradeHomeworkAnswer_('I am going to stay home.','I will stay home.','I am going to stay home. | I plan to stay home.').result,'correct');
+});
+
+test('кабинет учителя автоматически суммирует последние ответы',()=>{
+  const server=loadServer(),sheet={};
+  server.homeworkRows_=()=>[
+    {row:2,prompt:'Первое',answer:'First',correct:'First',status:'Верно',hint:'Нет',attempts:1,attemptedAt:'2026-08-05T10:00:00Z'},
+    {row:3,prompt:'Второе',answer:'Second?',correct:'Second',status:'Почти верно',hint:'Да · уровень 1',attempts:2,attemptedAt:'2026-08-05T10:01:00Z'},
+    {row:4,prompt:'Третье',answer:'Wrong',correct:'Third',status:'Неверно',hint:'Да · уровень 2',attempts:1,attemptedAt:'2026-08-05T10:02:00Z'}
+  ];
+  server.dateIso_=value=>String(value||'');
+  const summary=server.homeworkSummaryForStudent_({getSheetByName:()=>sheet},{name:'Student'});
+  assert.deepEqual([summary.correct,summary.almost,summary.wrong,summary.hints],[1,1,1,2]);
+  assert.equal(summary.problems.length,2);
+  assert.equal(summary.problems[0].prompt,'Третье');
+});

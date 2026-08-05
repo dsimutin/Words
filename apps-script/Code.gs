@@ -37,7 +37,7 @@ function doGet(e) {
 function apiRequest_(e){
   const callback=String(e.parameter.callback||'').replace(/[^a-zA-Z0-9_.$]/g,'');
   if(!callback)throw new Error('Callback is required.');
-  const allowed={bootstrap:bootstrap,loadLesson:loadLesson,progressDetails:progressDetails,saveLesson:saveLesson,ackAchievement:ackAchievement,teacherDashboard:teacherDashboard,sourceTabs:sourceTabs,createStudent:createStudent,updateStudent:updateStudent,setStudentActive:setStudentActive,resetStudentProgress:resetStudentProgress,deleteStudent:deleteStudent};
+  const allowed={bootstrap:bootstrap,loadLesson:loadLesson,progressDetails:progressDetails,saveLesson:saveLesson,loadHomework:loadHomework,checkHomeworkAnswer:checkHomeworkAnswer,ackAchievement:ackAchievement,teacherDashboard:teacherDashboard,sourceTabs:sourceTabs,createStudent:createStudent,updateStudent:updateStudent,setStudentActive:setStudentActive,resetStudentProgress:resetStudentProgress,deleteStudent:deleteStudent};
   const action=String(e.parameter.action||''),fn=allowed[action];
   let response;
   try{
@@ -54,7 +54,7 @@ function setupProject() { setupProject_(); return { ok:true, webAppUrl:ScriptApp
 function setupProject_() {
   const ss = SpreadsheetApp.openById(CONFIG.spreadsheetId);
   ensureSheet_(ss, CONFIG.sheets.students,
-    ['token','name','words_tab','verbs_tab','active','created_at','last_seen_at','language','best_streak','freeze_count','freeze_dates','freeze_bonus_date','seven_day_freeze_awarded','welcome_freeze_awarded','pending_achievement_days','pending_achievement_at','last_achievement_days']);
+    ['token','name','words_tab','verbs_tab','active','created_at','last_seen_at','language','best_streak','freeze_count','freeze_dates','freeze_bonus_date','seven_day_freeze_awarded','welcome_freeze_awarded','pending_achievement_days','pending_achievement_at','last_achievement_days','homework_tab']);
   ensureSheet_(ss, CONFIG.sheets.progress,
     ['token','item_key','category','word','level','correct','wrong','next_review_at','updated_at','streak','last_result']);
   ensureSheet_(ss, CONFIG.sheets.activity,
@@ -187,6 +187,84 @@ function loadLesson(token, category, mode, excludeKeys, requestedLimit) {
   return {category:category,mode:mode,total:selected.length,items:selected};
 }
 
+const HOMEWORK_SIZE_ = 7;
+const HOMEWORK_HEADERS_ = {
+  id:['ID','Id','id','№'],
+  prompt:['Переведи на английский','Задание','Предложение'],
+  answer:['Ответ ученика','Ответ Кристины','Ответ'],
+  correct:['Правильный вариант','Правильный ответ'],
+  alternatives:['Допустимые варианты','Варианты ответа'],
+  status:['Статус'],
+  comment:['Комментарий'],
+  attempts:['Количество попыток','Попытки'],
+  hint:['Использована подсказка','Подсказка'],
+  attemptedAt:['Последняя попытка','Дата ответа']
+};
+
+function homeworkSheetName_(student){return String(student.homework_tab||('Предложения — '+String(student.name||''))).trim();}
+function homeworkColumn_(headers,names){for(let i=0;i<names.length;i++){const index=headers.indexOf(names[i]);if(index>=0)return index;}return-1;}
+function homeworkColumns_(sheet,createOptional){
+  const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getValues()[0].map(x=>String(x).trim()),columns={};
+  Object.keys(HOMEWORK_HEADERS_).forEach(key=>columns[key]=homeworkColumn_(headers,HOMEWORK_HEADERS_[key]));
+  if(createOptional){
+    [['attempts','Количество попыток'],['hint','Использована подсказка'],['attemptedAt','Последняя попытка']].forEach(pair=>{
+      if(columns[pair[0]]<0){columns[pair[0]]=headers.length;headers.push(pair[1]);sheet.getRange(1,headers.length).setValue(pair[1]);}
+    });
+  }
+  if(columns.prompt<0||columns.correct<0)throw new Error('Во вкладке домашней работы нужны столбцы «Переведи на английский» и «Правильный вариант».');
+  return columns;
+}
+function homeworkRows_(sheet){
+  if(!sheet||sheet.getLastRow()<2)return[];
+  const columns=homeworkColumns_(sheet,false),values=sheet.getDataRange().getValues();
+  return values.slice(1).map((row,index)=>({
+    row:index+2,id:String(columns.id>=0&&row[columns.id]!==''?row[columns.id]:index+1),prompt:String(row[columns.prompt]||'').trim(),correct:String(row[columns.correct]||'').trim(),alternatives:columns.alternatives>=0?String(row[columns.alternatives]||''):'',answer:columns.answer>=0?String(row[columns.answer]||''):'',status:columns.status>=0?String(row[columns.status]||''):'',comment:columns.comment>=0?String(row[columns.comment]||''):'',attempts:columns.attempts>=0?Number(row[columns.attempts]||0):0,hint:columns.hint>=0?String(row[columns.hint]||''):'',attemptedAt:columns.attemptedAt>=0?row[columns.attemptedAt]:''
+  })).filter(x=>x.prompt&&x.correct);
+}
+function homeworkHintWords_(answer){
+  const chunks=String(answer||'').replace(/[.!?;,]+/g,'').split(/\s+/).filter(Boolean),phrases=[],joined=[];
+  for(let i=0;i<chunks.length;i++){
+    const lower=chunks[i].toLowerCase(),next=(chunks[i+1]||'').toLowerCase();
+    if((lower==='wake'&&next==='up')||(lower==='a'&&next==='little')||(lower==='after'&&next==='work')||(lower==='take'&&next==='a')){phrases.push(chunks[i]+' '+chunks[i+1]);i++;}else joined.push(chunks[i]);
+  }
+  return phrases.concat(joined);
+}
+function homeworkPriority_(item){const done=/^Верно/i.test(item.status),wrong=/Неверно|Почти/i.test(item.status);return done?2:wrong?1:0;}
+function selectHomeworkItems_(items,limit){return(items||[]).slice().sort((a,b)=>homeworkPriority_(a)-homeworkPriority_(b)||Number(a.attempts||0)-Number(b.attempts||0)||a.row-b.row).slice(0,limit||HOMEWORK_SIZE_);}
+function loadHomework(token){
+  const student=requireStudent_(token),ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),sheetName=homeworkSheetName_(student),sheet=ss.getSheetByName(sheetName);
+  if(!sheet)return{available:false,sheetName:sheetName,total:0,remaining:0,items:[]};
+  const all=homeworkRows_(sheet),selected=selectHomeworkItems_(all,HOMEWORK_SIZE_);
+  return{available:true,sheetName:sheetName,total:all.length,remaining:all.filter(x=>homeworkPriority_(x)<2).length,items:selected.map(x=>({id:x.id,prompt:x.prompt,hints:homeworkHintWords_(x.correct),previousStatus:x.status,attempts:x.attempts}))};
+}
+function normalizeHomeworkAnswer_(value){
+  return String(value||'').toLowerCase().replace(/[’‘`]/g,"'").replace(/\b(i'm)\b/g,'i am').replace(/\b(you're)\b/g,'you are').replace(/\b(she's)\b/g,'she is').replace(/\b(he's)\b/g,'he is').replace(/\b(we're)\b/g,'we are').replace(/\b(they're)\b/g,'they are').replace(/[^a-zа-яё0-9']+/gi,' ').replace(/\s+/g,' ').trim();
+}
+function editDistance_(a,b){const prev=Array.from({length:b.length+1},(_,i)=>i);for(let i=1;i<=a.length;i++){let diagonal=prev[0];prev[0]=i;for(let j=1;j<=b.length;j++){const old=prev[j];prev[j]=Math.min(prev[j]+1,prev[j-1]+1,diagonal+(a[i-1]===b[j-1]?0:1));diagonal=old;}}return prev[b.length];}
+function gradeHomeworkAnswer_(answer,correct,alternatives){
+  const given=normalizeHomeworkAnswer_(answer),accepted=[correct].concat(String(alternatives||'').split('|')).map(normalizeHomeworkAnswer_).filter(Boolean);
+  if(!given)return{result:'wrong',status:'Неверно',message:'Сначала напишите перевод.'};
+  if(accepted.indexOf(given)>=0)return{result:'correct',status:'Верно',message:'Верно! Отличная работа.'};
+  const closest=Math.min.apply(null,accepted.map(x=>editDistance_(given,x))),length=Math.max(given.length,Math.min.apply(null,accepted.map(x=>x.length)));
+  if(closest<=Math.max(1,Math.floor(length*.1)))return{result:'almost',status:'Почти верно',message:'Почти верно — проверьте написание и грамматику.'};
+  return{result:'wrong',status:'Неверно',message:'Пока неверно. Посмотрите правильный вариант.'};
+}
+function checkHomeworkAnswer(token,itemId,answer,hintLevel){
+  const lock=LockService.getScriptLock();lock.waitLock(15000);
+  try{
+    const student=requireStudent_(token),ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),sheet=ss.getSheetByName(homeworkSheetName_(student));if(!sheet)throw new Error('Домашняя работа пока не назначена.');
+    const item=homeworkRows_(sheet).find(x=>String(x.id)===String(itemId));if(!item)throw new Error('Задание не найдено. Обновите страницу.');
+    const grade=gradeHomeworkAnswer_(answer,item.correct,item.alternatives),columns=homeworkColumns_(sheet,true),row=sheet.getRange(item.row,1,1,sheet.getLastColumn()).getValues()[0];
+    if(columns.answer>=0)row[columns.answer]=String(answer||'').trim();if(columns.status>=0)row[columns.status]=grade.status;if(columns.attempts>=0)row[columns.attempts]=Number(item.attempts||0)+1;if(columns.hint>=0)row[columns.hint]=Number(hintLevel||0)>0?'Да · уровень '+Number(hintLevel):'Нет';if(columns.attemptedAt>=0)row[columns.attemptedAt]=new Date();sheet.getRange(item.row,1,1,row.length).setValues([row]);
+    return{ok:true,result:grade.result,status:grade.status,message:grade.message,correctAnswer:item.correct,attempts:Number(item.attempts||0)+1,hintUsed:Number(hintLevel||0)>0};
+  }finally{lock.releaseLock();}
+}
+function homeworkSummaryForStudent_(ss,student){
+  const sheetName=homeworkSheetName_(student),sheet=ss.getSheetByName(sheetName);if(!sheet)return{available:false,sheetName:sheetName,total:0,attempted:0,correct:0,almost:0,wrong:0,hints:0,lastAt:'',problems:[]};
+  const all=homeworkRows_(sheet),attempted=all.filter(x=>x.answer||x.status).sort((a,b)=>new Date(b.attemptedAt||0)-new Date(a.attemptedAt||0)||b.row-a.row),recent=attempted.slice(0,HOMEWORK_SIZE_);
+  return{available:true,sheetName:sheetName,total:all.length,attempted:all.filter(x=>x.answer).length,correct:recent.filter(x=>/^Верно/i.test(x.status)).length,almost:recent.filter(x=>/Почти/i.test(x.status)).length,wrong:recent.filter(x=>/Неверно/i.test(x.status)).length,hints:recent.filter(x=>/^Да/i.test(x.hint)).length,lastAt:recent.length?dateIso_(recent[0].attemptedAt):'',problems:recent.filter(x=>!/^(Верно)/i.test(x.status)).map(x=>({prompt:x.prompt,answer:x.answer,correct:x.correct,status:x.status,hint:x.hint,attempts:x.attempts,comment:x.comment}))};
+}
+
 function progressDetails(token,type){
   requireStudent_(token);type=String(type||'studied');const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);
   const now=new Date(),rows=studentData_(ss,token).progress;
@@ -259,16 +337,16 @@ function teacherDashboard(teacherKey){if(!isTeacher_(teacherKey))throw new Error
 function sourceTabs(teacherKey){if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');return sourceTabs_();}
 
 function sourceTabs_(){
-  const cache=CacheService.getScriptCache(),cached=cache.get('source-tabs-v6');if(cached)return JSON.parse(cached);
-  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),result={words:[],verbs:[]};
+  const cache=CacheService.getScriptCache(),cached=cache.get('source-tabs-v7');if(cached)return JSON.parse(cached);
+  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),result={words:[],verbs:[],homework:[]};
   ss.getSheets().forEach(sheet=>{
     const name=sheet.getName();if(name.charAt(0)==='_')return;
     const headers=sheet.getLastColumn()?sheet.getRange(1,1,1,sheet.getLastColumn()).getValues()[0].map(String):[];
-    const spanish=headers.indexOf('Español')>=0||headers.indexOf('Infinitivo')>=0||/espa[nñ]ol|spanish|испан/i.test(name),verb=headers.indexOf('Verb')>=0||headers.indexOf('Infinitivo')>=0||/глагол|verbs?|verbos?/i.test(name);
-    (verb?result.verbs:result.words).push({name:name,language:spanish?'es':'en'});
+    const spanish=headers.indexOf('Español')>=0||headers.indexOf('Infinitivo')>=0||/espa[nñ]ol|spanish|испан/i.test(name),homework=homeworkColumn_(headers.map(x=>String(x).trim()),HOMEWORK_HEADERS_.prompt)>=0&&homeworkColumn_(headers.map(x=>String(x).trim()),HOMEWORK_HEADERS_.correct)>=0,verb=headers.indexOf('Verb')>=0||headers.indexOf('Infinitivo')>=0||/глагол|verbs?|verbos?/i.test(name);
+    (homework?result.homework:verb?result.verbs:result.words).push({name:name,language:spanish?'es':'en'});
   });
-  result.words.sort((a,b)=>a.name.localeCompare(b.name));result.verbs.sort((a,b)=>a.name.localeCompare(b.name));
-  cache.put('source-tabs-v6',JSON.stringify(result),300);return result;
+  result.words.sort((a,b)=>a.name.localeCompare(b.name));result.verbs.sort((a,b)=>a.name.localeCompare(b.name));result.homework.sort((a,b)=>a.name.localeCompare(b.name));
+  cache.put('source-tabs-v7',JSON.stringify(result),300);return result;
 }
 
 function teacherDashboard_() {
@@ -283,36 +361,39 @@ function teacherDashboard_() {
     const last=a.length?a[a.length-1]:null, byCat=c=>p.filter(x=>x.category===c),wordProgress=byCat('word'),verbProgress=byCat('verb');
     const wordTotal=sourceRowCount_(ss.getSheetByName(s.words_tab)),verbTotal=sourceRowCount_(ss.getSheetByName(s.verbs_tab));
     const stock={words:remainingStock_(wordTotal,wordProgress.length),verbs:remainingStock_(verbTotal,verbProgress.length),wordTotal:wordTotal,verbTotal:verbTotal};
-    return {name:s.name,active:truthy_(s.active),token:s.token,wordsTab:s.words_tab,verbsTab:s.verbs_tab,language:String(s.language||'en'),
+    const homework=homeworkSummaryForStudent_(ss,s);
+    return {name:s.name,active:truthy_(s.active),token:s.token,wordsTab:s.words_tab,verbsTab:s.verbs_tab,homeworkTab:homeworkSheetName_(s),language:String(s.language||'en'),
       lastSeen:dateIso_(s.last_seen_at),studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,
       words:{studied:byCat('word').length,learned:byCat('word').filter(x=>Number(x.level)>=3).length},
       verbs:{studied:byCat('verb').length,learned:byCat('verb').filter(x=>Number(x.level)>=3).length},
       stock:stock,stockWarning:stock.words<=20||Boolean(s.verbs_tab)&&stock.verbs<=20,
       today:a.filter(x=>now-new Date(x.timestamp).getTime()<day).length,
       week:a.filter(x=>now-new Date(x.timestamp).getTime()<7*day).length,
-      lastLessonAt:last?dateIso_(last.timestamp):'',lastScore:last?Number(last.score)+'/'+Number(last.total):'—',difficult:difficult,history:recent};
+      lastLessonAt:last?dateIso_(last.timestamp):'',lastScore:last?Number(last.score)+'/'+Number(last.total):'—',difficult:difficult,history:recent,homework:homework};
   });
 }
 
 function createStudent(teacherKey,data) {
   if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');
-  const name=String(data.name||'').trim(),wordsTab=String(data.wordsTab||'').trim(),verbsTab=String(data.verbsTab||'').trim(),language=data.language==='es'?'es':'en';
+  const name=String(data.name||'').trim(),wordsTab=String(data.wordsTab||'').trim(),verbsTab=String(data.verbsTab||'').trim(),homeworkTab=String(data.homeworkTab||'').trim(),language=data.language==='es'?'es':'en';
   if(!name||!wordsTab)throw new Error('Укажите имя и вкладку со словами.');
   const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);
   if(!ss.getSheetByName(wordsTab))throw new Error('Вкладка «'+wordsTab+'» не найдена.');
   if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');
+  if(homeworkTab&&!ss.getSheetByName(homeworkTab))throw new Error('Вкладка предложений «'+homeworkTab+'» не найдена.');
   ensureSourceIds_(ss.getSheetByName(wordsTab)); if(verbsTab)ensureSourceIds_(ss.getSheetByName(verbsTab));
-  const token=Utilities.getUuid().replace(/-/g,''); ss.getSheetByName(CONFIG.sheets.students).appendRow([token,name,wordsTab,verbsTab,true,new Date(),'',language]);
+  const token=Utilities.getUuid().replace(/-/g,''),studentsSheet=ss.getSheetByName(CONFIG.sheets.students),headers=studentsSheet.getRange(1,1,1,studentsSheet.getLastColumn()).getValues()[0].map(String),row=Array(headers.length).fill('');[['token',token],['name',name],['words_tab',wordsTab],['verbs_tab',verbsTab],['active',true],['created_at',new Date()],['language',language],['homework_tab',homeworkTab]].forEach(pair=>{const index=headers.indexOf(pair[0]);if(index>=0)row[index]=pair[1]});studentsSheet.appendRow(row);
   return {ok:true,token:token,dashboard:teacherDashboard_()};
 }
 
 function updateStudent(teacherKey,token,data){
   if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');
-  const name=String(data.name||'').trim(),wordsTab=String(data.wordsTab||'').trim(),verbsTab=String(data.verbsTab||'').trim(),language=data.language==='es'?'es':'en';
+  const name=String(data.name||'').trim(),wordsTab=String(data.wordsTab||'').trim(),verbsTab=String(data.verbsTab||'').trim(),homeworkTab=String(data.homeworkTab||'').trim(),language=data.language==='es'?'es':'en';
   if(!name||!wordsTab)throw new Error('Укажите имя и вкладку со словами.');
-  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);if(!ss.getSheetByName(wordsTab))throw new Error('Вкладка «'+wordsTab+'» не найдена.');if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');
+  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);if(!ss.getSheetByName(wordsTab))throw new Error('Вкладка «'+wordsTab+'» не найдена.');if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');if(homeworkTab&&!ss.getSheetByName(homeworkTab))throw new Error('Вкладка предложений «'+homeworkTab+'» не найдена.');
   const sheet=ss.getSheetByName(CONFIG.sheets.students),rows=sheet.getDataRange().getValues();
-  for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(token)){sheet.getRange(i+1,2,1,3).setValues([[name,wordsTab,verbsTab]]);sheet.getRange(i+1,8).setValue(language);return teacherDashboard_();}
+  const headers=rows[0].map(String),homeworkColumn=headers.indexOf('homework_tab')+1;
+  for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(token)){sheet.getRange(i+1,2,1,3).setValues([[name,wordsTab,verbsTab]]);sheet.getRange(i+1,8).setValue(language);if(homeworkColumn)sheet.getRange(i+1,homeworkColumn).setValue(homeworkTab);return teacherDashboard_();}
   throw new Error('Ученик не найден.');
 }
 
