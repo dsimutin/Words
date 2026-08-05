@@ -202,6 +202,12 @@ const HOMEWORK_HEADERS_ = {
 };
 
 function homeworkSheetName_(student){return String(student.homework_tab||('Предложения — '+String(student.name||''))).trim();}
+function ensureStudentHomeworkColumn_(sheet){
+  const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getValues()[0].map(String);
+  let column=headers.indexOf('homework_tab')+1;
+  if(!column){column=sheet.getLastColumn()+1;sheet.getRange(1,column).setValue('homework_tab');}
+  return column;
+}
 function homeworkColumn_(headers,names){for(let i=0;i<names.length;i++){const index=headers.indexOf(names[i]);if(index>=0)return index;}return-1;}
 function homeworkColumns_(sheet,createOptional){
   const headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getValues()[0].map(x=>String(x).trim()),columns={};
@@ -382,7 +388,7 @@ function createStudent(teacherKey,data) {
   if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');
   if(homeworkTab&&!ss.getSheetByName(homeworkTab))throw new Error('Вкладка предложений «'+homeworkTab+'» не найдена.');
   ensureSourceIds_(ss.getSheetByName(wordsTab)); if(verbsTab)ensureSourceIds_(ss.getSheetByName(verbsTab));
-  const token=Utilities.getUuid().replace(/-/g,''),studentsSheet=ss.getSheetByName(CONFIG.sheets.students),headers=studentsSheet.getRange(1,1,1,studentsSheet.getLastColumn()).getValues()[0].map(String),row=Array(headers.length).fill('');[['token',token],['name',name],['words_tab',wordsTab],['verbs_tab',verbsTab],['active',true],['created_at',new Date()],['language',language],['homework_tab',homeworkTab]].forEach(pair=>{const index=headers.indexOf(pair[0]);if(index>=0)row[index]=pair[1]});studentsSheet.appendRow(row);
+  const token=Utilities.getUuid().replace(/-/g,''),studentsSheet=ss.getSheetByName(CONFIG.sheets.students);ensureStudentHomeworkColumn_(studentsSheet);const headers=studentsSheet.getRange(1,1,1,studentsSheet.getLastColumn()).getValues()[0].map(String),row=Array(headers.length).fill('');[['token',token],['name',name],['words_tab',wordsTab],['verbs_tab',verbsTab],['active',true],['created_at',new Date()],['language',language],['homework_tab',homeworkTab]].forEach(pair=>{const index=headers.indexOf(pair[0]);if(index>=0)row[index]=pair[1]});studentsSheet.appendRow(row);
   return {ok:true,token:token,dashboard:teacherDashboard_()};
 }
 
@@ -391,8 +397,7 @@ function updateStudent(teacherKey,token,data){
   const name=String(data.name||'').trim(),wordsTab=String(data.wordsTab||'').trim(),verbsTab=String(data.verbsTab||'').trim(),homeworkTab=String(data.homeworkTab||'').trim(),language=data.language==='es'?'es':'en';
   if(!name||!wordsTab)throw new Error('Укажите имя и вкладку со словами.');
   const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId);if(!ss.getSheetByName(wordsTab))throw new Error('Вкладка «'+wordsTab+'» не найдена.');if(verbsTab&&!ss.getSheetByName(verbsTab))throw new Error('Вкладка «'+verbsTab+'» не найдена.');if(homeworkTab&&!ss.getSheetByName(homeworkTab))throw new Error('Вкладка предложений «'+homeworkTab+'» не найдена.');
-  const sheet=ss.getSheetByName(CONFIG.sheets.students),rows=sheet.getDataRange().getValues();
-  const headers=rows[0].map(String),homeworkColumn=headers.indexOf('homework_tab')+1;
+  const sheet=ss.getSheetByName(CONFIG.sheets.students),homeworkColumn=ensureStudentHomeworkColumn_(sheet),rows=sheet.getDataRange().getValues();
   for(let i=1;i<rows.length;i++)if(String(rows[i][0])===String(token)){sheet.getRange(i+1,2,1,3).setValues([[name,wordsTab,verbsTab]]);sheet.getRange(i+1,8).setValue(language);if(homeworkColumn)sheet.getRange(i+1,homeworkColumn).setValue(homeworkTab);return teacherDashboard_();}
   throw new Error('Ученик не найден.');
 }

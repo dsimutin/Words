@@ -80,6 +80,18 @@ test('домашняя работа выдаёт не больше семи пр
   assert.deepEqual(selected.map(item=>item.id),['4','5','6','7','8','9','10']);
 });
 
+test('столбец домашней работы создаётся для старой таблицы учеников',()=>{
+  const server=loadServer(),writes=[];
+  const sheet={getLastColumn:()=>17,getRange:(row,column)=>({getValues:()=>[Array.from({length:17},(_,i)=>i===0?'token':'column-'+i)],setValue:value=>writes.push({row,column,value})})};
+  assert.equal(server.ensureStudentHomeworkColumn_(sheet),18);
+  assert.deepEqual(writes,[{row:1,column:18,value:'homework_tab'}]);
+});
+
+test('подтверждение ачивки не расходует заморозки',()=>{
+  const source=fs.readFileSync(path.join(__dirname,'../apps-script/Code.gs'),'utf8'),body=source.match(/function ackAchievement[\s\S]*?\n}\n/)[0];
+  assert.doesNotMatch(body,/freeze_count|freezeCount/);
+});
+
 test('проверка домашней работы не зависит от регистра и пунктуации',()=>{
   const server=loadServer();
   assert.equal(server.gradeHomeworkAnswer_("i'm tired after work",'I am tired after work.','').result,'correct');
