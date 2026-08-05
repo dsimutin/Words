@@ -270,8 +270,11 @@ function homeworkContentCoverage_(given,expected){
   const a=content(given),b=content(expected),counts={};a.forEach(x=>counts[x]=(counts[x]||0)+1);let common=0;b.forEach(x=>{if(counts[x]>0){counts[x]--;common++;}});
   return Math.max(a.length,b.length)?common/Math.max(a.length,b.length):1;
 }
+function homeworkCorrectObviousTypos_(given,expected){
+  const used={};return given.map(token=>{let best=token,bestIndex=-1;for(let i=0;i<expected.length;i++){if(used[i]||Math.min(token.length,expected[i].length)<4)continue;const distance=editDistance_(token,expected[i]);if(distance===1){best=expected[i];bestIndex=i;break}}if(bestIndex>=0)used[bestIndex]=true;return best;});
+}
 function homeworkSimilarity_(given,expected){
-  const a=given.split(' ').filter(Boolean),b=expected.split(' ').filter(Boolean);if(!homeworkCriticalMatch_(a,b)||homeworkContentCoverage_(a,b)<.75)return 0;
+  const original=given.split(' ').filter(Boolean),b=expected.split(' ').filter(Boolean),a=homeworkCorrectObviousTypos_(original,b);if(!homeworkCriticalMatch_(a,b)||homeworkContentCoverage_(a,b)<.75)return 0;
   const chars=1-editDistance_(given,expected)/Math.max(given.length,expected.length,1);
   return .55*homeworkTokenOverlap_(a,b)+.25*homeworkLcsRatio_(a,b)+.2*Math.max(0,chars);
 }

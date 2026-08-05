@@ -106,9 +106,15 @@ test('британское и американское написание счи
   assert.equal(server.gradeHomeworkAnswer_('This is my favourite colour.','This is my favorite color.','').result,'correct');
 });
 
-test('небольшая опечатка помечается как почти верный ответ',()=>{
+test('небольшая опечатка не мешает засчитать понятную структуру',()=>{
   const server=loadServer();
-  assert.equal(server.gradeHomeworkAnswer_('She replid after lunch.','She replied after lunch.','').result,'almost');
+  assert.equal(server.gradeHomeworkAnswer_('She replid after lunch.','She replied after lunch.','').result,'correct');
+});
+
+test('понятная структура с опечаткой и пропущенным вспомогательным глаголом засчитывается',()=>{
+  const server=loadServer(),grade=server.gradeHomeworkAnswer_('I tied after work.','I am tired after work.','');
+  assert.equal(grade.result,'correct');
+  assert.ok(grade.similarity>=.7);
 });
 
 test('допустимые варианты ответа разделяются вертикальной чертой',()=>{
