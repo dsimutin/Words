@@ -28,6 +28,11 @@ test('второе полноценное занятие за день доба�
   assert.equal(student.freeze_bonus_date,'2026-08-05');
 });
 
+test('несколько пропущенных дней закрываются доступными заморозками',()=>{
+  const server=loadServer(),filled=server.consumeMissedDays_('2026-08-10','2026-08-13',3,[]);
+  assert.equal(filled.used,2);assert.equal(filled.freezeCount,1);assert.deepEqual(filled.freezeDates,['2026-08-11','2026-08-12']);
+});
+
 test('остаток новых слов уменьшается и не бывает отрицательным',()=>{
   const server=loadServer();
   assert.equal(server.remainingStock_(200,57),143);

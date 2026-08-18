@@ -110,6 +110,7 @@ function bootstrap(token, teacherKey, timeZone) {
   }
   const now=new Date();
   const data=studentData_(ss,token),p=data.progress;
+  if(repairFreezeHistory_(data.activity,student,timeZone)){saveStudentMeta_(studentsSheet,studentIndex+2,student);}
   const activity=data.activity,streak=streakStatsForStudent_(activity,student,timeZone,now),bestStreak=Math.max(Number(student.best_streak||0),streak.longest);
   const summary={studied:p.length,learned:p.filter(x=>Number(x.level)>=3).length,almost:p.filter(x=>Number(x.level)===2).length,due:p.filter(x=>new Date(x.next_review_at||0)<=now).length,today:activity.filter(x=>dateKey_(x.timestamp,timeZone)===streak.todayKey).length};
   let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),dailyBonus=dailyFreezeBonus_(activity,student,timeZone,streak.todayKey,freezeCount);
@@ -148,6 +149,18 @@ function streakStatsForStudent_(activity,student,timeZone,now){
   const todayKey=dateKey_(now||new Date(),timeZone),keys=(activity||[]).map(x=>dateKey_(x.timestamp,timeZone)).filter(Boolean).concat(freezeDates_(student)),stats=streakStatsFromKeys_(keys,todayKey);stats.totalLessons=(activity||[]).length;return stats;
 }
 function dayDistance_(fromKey,toKey){const a=new Date(String(fromKey)+'T00:00:00Z'),b=new Date(String(toKey)+'T00:00:00Z');return isNaN(a.getTime())||isNaN(b.getTime())?0:Math.round((b-a)/86400000);}
+function consumeMissedDays_(lastKey,todayKey,freezeCount,freezeDates){
+  let remaining=Math.max(0,dayDistance_(lastKey,todayKey)-1),cursor=String(lastKey||''),used=0;
+  while(remaining>0&&freezeCount>0){cursor=new Date(new Date(cursor+'T00:00:00Z').getTime()+86400000).toISOString().slice(0,10);if(freezeDates.indexOf(cursor)<0){freezeDates.push(cursor);freezeCount--;used++;}remaining--;}
+  return{freezeCount:freezeCount,used:used,freezeDates:freezeDates};
+}
+function repairFreezeHistory_(activity,student,timeZone){
+  let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),freezeDates=freezeDates_(student),used=0;
+  const keys=Array.from(new Set((activity||[]).map(x=>dateKey_(x.timestamp,timeZone)).filter(Boolean))).sort();
+  for(let i=1;i<keys.length&&freezeCount>0;i++){if(dayDistance_(keys[i-1],keys[i])>1){const filled=consumeMissedDays_(keys[i-1],keys[i],freezeCount,freezeDates);freezeCount=filled.freezeCount;freezeDates=filled.freezeDates;used+=filled.used;}}
+  if(used){student.freeze_count=freezeCount;student.freeze_dates=freezeDates.join(',');}
+  return used;
+}
 
 function ensureStudentMetaColumns_(sheet){
   const names=['best_streak','freeze_count','freeze_dates','freeze_bonus_date','seven_day_freeze_awarded','welcome_freeze_awarded','pending_achievement_days','pending_achievement_at','last_achievement_days'],headers=sheet.getRange(1,1,1,Math.max(1,sheet.getLastColumn())).getValues()[0].map(String),columns={};
@@ -325,7 +338,7 @@ function finishHomeworkSession(token,score,total,sessionId,timeZone){
     activitySheet.appendRow([now,token,'homework',Number(score||0),Number(total||HOMEWORK_SIZE_),Number(score||0),Math.max(0,Number(total||HOMEWORK_SIZE_)-Number(score||0)),0,sessionId]);
     let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),freezeDates=freezeDates_(student),freezeUsed=false;
     const previousKeys=activity.map(x=>dateKey_(x.timestamp,timeZone)).filter(k=>k&&k<todayKey).sort(),lastKey=previousKeys[previousKeys.length-1]||'';
-    if(lastKey&&dayDistance_(lastKey,todayKey)===2&&freezeCount>0){const missed=previousDateKey_(todayKey);if(freezeDates.indexOf(missed)<0){freezeDates.push(missed);freezeCount--;freezeUsed=true;}}
+    if(lastKey&&dayDistance_(lastKey,todayKey)>1&&freezeCount>0){const filled=consumeMissedDays_(lastKey,todayKey,freezeCount,freezeDates);freezeCount=filled.freezeCount;freezeDates=filled.freezeDates;freezeUsed=filled.used>0;}
     student.freeze_dates=freezeDates.join(',');student.freeze_count=freezeCount;
     const updated=activity.concat([{timestamp:now,score:Number(score||0),total:Number(total||HOMEWORK_SIZE_),session_id:sessionId}]),streak=streakStatsForStudent_(updated,student,timeZone,now),best=Math.max(Number(student.best_streak||0),streak.longest),reached=highestAchievementDays_(best),previousAchievement=Number(student.last_achievement_days||0);
     student.best_streak=best;if(reached>previousAchievement){student.last_achievement_days=reached;student.pending_achievement_days=reached;student.pending_achievement_at=now;}
@@ -392,9 +405,7 @@ function saveLesson(token,payload) {
     const p=body.filter(r=>String(r[0])===String(token)),studentActivity=completedActivity_(activityRows),todayKey=dateKey_(now,payload.timeZone);
     let freezeCount=Math.max(0,Math.min(MAX_FREEZE_DAYS_,Number(student.freeze_count||0))),freezeDates=freezeDates_(student),freezeUsed=false,freezeEarned=false,freezeReason='';
     const previousKeys=studentActivity.map(r=>dateKey_(r.timestamp,payload.timeZone)).filter(k=>k&&k<todayKey).sort(),lastKey=previousKeys[previousKeys.length-1]||'';
-    if(lastKey&&dayDistance_(lastKey,todayKey)===2&&freezeCount>0){
-      const missed=previousDateKey_(todayKey);if(freezeDates.indexOf(missed)<0){freezeDates.push(missed);freezeCount--;freezeUsed=true;}
-    }
+    if(lastKey&&dayDistance_(lastKey,todayKey)>1&&freezeCount>0){const filled=consumeMissedDays_(lastKey,todayKey,freezeCount,freezeDates);freezeCount=filled.freezeCount;freezeDates=filled.freezeDates;freezeUsed=filled.used>0;}
     student.freeze_dates=freezeDates.join(',');student.freeze_count=freezeCount;
     const updatedActivity=studentActivity.concat([{timestamp:now,score:Number(payload.score||0),total:Number(payload.total||0)}]),streak=streakStatsForStudent_(updatedActivity,student,payload.timeZone,now);
     const bestStreak=Math.max(Number(student.best_streak||0),streak.longest);student.best_streak=bestStreak;
