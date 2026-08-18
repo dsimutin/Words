@@ -97,7 +97,7 @@ function ensureSourceIds_(sheet) {
 }
 
 function bootstrap(token, teacherKey, timeZone) {
-  if (teacherKey && isTeacher_(teacherKey)) return { role:'teacher',dashboard:teacherDashboard_(),tabs:sourceTabs_() };
+  if (teacherKey && isTeacher_(teacherKey)) { repairAllStudentStreaks(); return { role:'teacher',dashboard:teacherDashboard_(),tabs:sourceTabs_() }; }
   const bootstrapCache=CacheService.getScriptCache(),bootstrapKey=studentBootstrapCacheKey_(token),cachedBootstrap=bootstrapCache.get(bootstrapKey);
   if(cachedBootstrap)try{return JSON.parse(cachedBootstrap);}catch(e){}
   const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),studentsSheet=ss.getSheetByName(CONFIG.sheets.students);
@@ -160,6 +160,11 @@ function repairFreezeHistory_(activity,student,timeZone){
   for(let i=1;i<keys.length&&freezeCount>0;i++){if(dayDistance_(keys[i-1],keys[i])>1){const filled=consumeMissedDays_(keys[i-1],keys[i],freezeCount,freezeDates);freezeCount=filled.freezeCount;freezeDates=filled.freezeDates;used+=filled.used;}}
   if(used){student.freeze_count=freezeCount;student.freeze_dates=freezeDates.join(',');}
   return used;
+}
+function repairAllStudentStreaks(){
+  const ss=SpreadsheetApp.openById(CONFIG.spreadsheetId),studentsSheet=ss.getSheetByName(CONFIG.sheets.students),students=rowsAsObjects_(studentsSheet),activityRows=completedActivity_(rowsAsObjects_(ss.getSheetByName(CONFIG.sheets.activity))),now=new Date(),updated=[];
+  students.forEach((student,index)=>{const activity=activityRows.filter(x=>String(x.token)===String(student.token)),timeZone=Session.getScriptTimeZone()||'Europe/Moscow';if(repairFreezeHistory_(activity,student,timeZone)){saveStudentMeta_(studentsSheet,index+2,student);clearStudentDataCache_(student.token);}const stats=streakStatsForStudent_(activity,student,timeZone,now),best=Math.max(Number(student.best_streak||0),stats.longest);if(best!==Number(student.best_streak||0)){student.best_streak=best;saveStudentMeta_(studentsSheet,index+2,student);}updated.push({name:String(student.name||''),streak:stats.current,longest:best,freezeCount:Number(student.freeze_count||0)});});
+  return updated;
 }
 
 function ensureStudentMetaColumns_(sheet){
@@ -418,7 +423,7 @@ function saveLesson(token,payload) {
   } finally { lock.releaseLock(); }
 }
 
-function teacherDashboard(teacherKey){if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');return teacherDashboard_();}
+function teacherDashboard(teacherKey){if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');repairAllStudentStreaks();return teacherDashboard_();}
 function sourceTabs(teacherKey){if(!isTeacher_(teacherKey))throw new Error('Нет доступа.');return sourceTabs_();}
 
 function sourceTabs_(){
