@@ -20,7 +20,7 @@ function dailyFreezeBonus_(activity,student,timeZone,todayKey,freezeCount){
 }
 function highestAchievementDays_(streak){ let best=0; ACHIEVEMENT_DAYS_.forEach(d=>{if(Number(streak)>=d)best=d;}); return best; }
 function studentDataCacheKey_(token){return'student-data-v1:'+String(token||'');}
-function studentBootstrapCacheKey_(token){return'student-bootstrap-v2:'+String(token||'');}
+function studentBootstrapCacheKey_(token){return'student-bootstrap-v3:'+String(token||'');}
 function clearStudentDataCache_(token){try{const cache=CacheService.getScriptCache();cache.remove(studentDataCacheKey_(token));cache.remove(studentBootstrapCacheKey_(token));}catch(e){}}
 function studentData_(ss,token){
   const cache=CacheService.getScriptCache(),key=studentDataCacheKey_(token),cached=cache.get(key);if(cached)try{return JSON.parse(cached);}catch(e){}
